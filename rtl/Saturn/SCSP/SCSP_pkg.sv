@@ -347,10 +347,11 @@ package SCSP_PKG;
 		bit         RST;	//
 		bit         KON;	//
 		bit         KOFF;	//
-		bit [13: 0] PHASE_FRAC;//Phase fractional
+		bit [22: 0] PHASE;
 		bit         MSK;	//
+		bit [ 7: 0] ND;
 	} OP2_t;
-	parameter OP2_t OP2_RESET = '{5'h00,1'b0,1'b0,1'b0,14'h0000,1'b0};
+	parameter OP2_t OP2_RESET = '{5'h00,1'b0,1'b0,1'b0,23'h000000,1'b0,8'h00};
 	
 	typedef struct packed
 	{
@@ -360,12 +361,13 @@ package SCSP_PKG;
 		bit         KOFF;	//
 		bit         ALLOW;
 		bit         LOOP;	//Loop processing 
+		bit [13: 0] PHASE_FRAC;//Phase fractional
+		bit [ 7: 0] ND;
 		bit [15: 0] SO;	//Sample offset
 		bit [21: 0] MOD;	//Modulation
-		bit [19: 0] MASK;	//Wave mask
-		bit [13: 0] PHASE_FRAC;//Phase fractional
+		bit [16: 0] MASK;	//Wave mask
 	} OP3_t;
-	parameter OP3_t OP3_RESET = '{5'h00,1'b0,1'b0,1'b0,1'b0,1'b0,16'h0000,22'h000000,20'h00000,14'h0000};
+	parameter OP3_t OP3_RESET = '{5'h00,1'b0,1'b0,1'b0,1'b0,1'b0,14'h0000,8'h00,16'h0000,22'h000000,17'h00000};
 	
 	typedef struct packed
 	{
@@ -374,12 +376,12 @@ package SCSP_PKG;
 		bit         KON;	//
 		bit         KOFF;	//
 		bit         LOOP;//Loop processing 
+		bit [ 7: 0] ND;
 		bit [ 5: 0] MODF;	//Modulation fractional
 		bit [ 1: 0] SSCTL;
 		bit [ 1: 0] SBCTL;
-		bit         PCM8B;	//
 	} OP4_t;
-	parameter OP4_t OP4_RESET = '{5'h00,1'b0,1'b0,1'b0,1'b0,6'h00,2'b00,2'b00,1'b0};
+	parameter OP4_t OP4_RESET = '{5'h00,1'b0,1'b0,1'b0,1'b0,8'h00,6'h00,2'b00,2'b00};
 	
 	typedef struct packed
 	{
@@ -484,7 +486,7 @@ package SCSP_PKG;
 			2'b00: WAVE = DATA;
 			2'b01: WAVE = { DATA[7],{7{~DATA[7]}} };
 			2'b10: WAVE = { {1'b0,DATA[5:0]^{6{DATA[6]}}} ^ {7{DATA[7]}},1'b0 };
-			2'b11: WAVE = NOISE;
+			2'b11: WAVE = NOISE ^ 8'h80;
 		endcase
 		
 		RET = PLFOS ? $signed($signed(WAVE&8'hFE)>>>(~PLFOS)) : '0;
@@ -492,8 +494,8 @@ package SCSP_PKG;
 		return RET;
 	endfunction
 	
-	function bit [21:0] PhaseCalc(SCR5_t SCR5, bit signed [7:0] PLFO_WAVE);
-		bit [25:0] P;
+	function bit [22:0] PhaseCalc(SCR5_t SCR5, bit signed [7:0] PLFO_WAVE);
+		bit [26:0] P;
 		bit [3:0] S;
 		bit [10:0] F;
 		bit [14:0] TEMP;
@@ -503,25 +505,25 @@ package SCSP_PKG;
 		F = 11'h400 + SCR5.FNS;
 		TEMP = $signed(PLFO_WAVE) * F[10:4];
 		FM = {{3{TEMP[14]}},TEMP[14:6]};
-		P = {14'b00000000000000,{1'b0,F}+FM}<<S;
+		P = {15'b000000000000000,{1'b0,F}+FM}<<S;
 		
-		return P[25:4];
+		return P[26:4];
 	endfunction
 	
-	function bit [19:0] WaveMask(bit [15:0] LEA);
-		bit [19:0] RET;
+	function bit [16:0] WaveMask(bit [15:0] LEA);
+		bit [16:0] RET;
 		
-		RET = 20'hFFFFF;
-		if (LEA[10]) RET = 20'h003FF;
-		if (LEA[ 9]) RET = 20'h001FF;
-		if (LEA[ 8]) RET = 20'h000FF;
-		if (LEA[ 7]) RET = 20'h0007F;
+		RET = 17'h1FFFF;
+		if (LEA[10]) RET = 17'h003FF;
+		if (LEA[ 9]) RET = 17'h001FF;
+		if (LEA[ 8]) RET = 17'h000FF;
+		if (LEA[ 7]) RET = 17'h0007F;
 		
 		return RET;
 	endfunction
 	
-	function bit [4:0] EffRateCalc(bit [4:0] RATE, bit [3:0] KRS, bit [3:0] OCT);
-		bit [5:0] RES;
+	function bit [5:0] EffRateCalc(bit [4:0] RATE, bit [3:0] KRS, bit [3:0] OCT);
+		bit [4:0] RES;
 		bit [5:0] TEMP;
 		bit [3:0] KEY_EG_SCALE;
 		bit [5:0] TEMP2;
@@ -536,7 +538,7 @@ package SCSP_PKG;
 		TEMP2 = {1'b0,RATE} + {2'b00,KEY_EG_SCALE};
 		RES = TEMP2[5] ? 5'h1F : TEMP2[4:0];
 			
-		return RES;
+		return {TEMP2[5],RES};
 	endfunction
 	
 	function bit [3:0] EffRateBit(bit [4:0] ERATE);
