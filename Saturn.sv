@@ -236,7 +236,7 @@ module emu
 	// 0         1         2         3          4         5         6   
 	// 01234567890123456789012345678901 23456789012345678901234567890123
 	// 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-	// XXXX XXXXXXXXXXXXXXXXXXXXXXX      XXXXXXXXXXXXX                
+	// XXXX XXXXXXXXXXXXXXXXXXXXXXXX     XXXXXXXXXXXXX                
 	
 	`include "build_id.v"
 	localparam CONF_STR = {
@@ -269,54 +269,60 @@ module emu
 		"P2OR,SNAC,OFF,ON;",
 		"-;",
 		
+`ifndef MISTER_DUAL_SDRAM
+		"P3,Hardware;",
+		"P3-;",
+		"P3OS,Timing,Original,Fast;",
+`endif
+		
 `ifndef DEBUG
-		"P3,Debug;",
-		"P3-;",
-		"P3o4,VDP2 NBG0,Enable,Disable;",
-		"P3o5,VDP2 NBG1,Enable,Disable;",
-		"P3o6,VDP2 NBG2,Enable,Disable;",
-		"P3o7,VDP2 NBG3,Enable,Disable;",
-		"P3o8,VDP2 RBG0,Enable,Disable;",
-		"P3o9,VDP2 Sprite,Enable,Disable;",
-		"P3oA,VDP2 Shadow,Enable,Disable;",
-		"P3-;",
-		"P3oB,SCSP Direct sound,Enable,Disable;",
-		"P3oC,SCSP DSP sound,Enable,Disable;",
-		"P3oD,CD audio,Enable,Disable;",
+		"P4,Debug;",
+		"P4-;",
+		"P4o4,VDP2 NBG0,Enable,Disable;",
+		"P4o5,VDP2 NBG1,Enable,Disable;",
+		"P4o6,VDP2 NBG2,Enable,Disable;",
+		"P4o7,VDP2 NBG3,Enable,Disable;",
+		"P4o8,VDP2 RBG0,Enable,Disable;",
+		"P4o9,VDP2 Sprite,Enable,Disable;",
+		"P4oA,VDP2 Shadow,Enable,Disable;",
+		"P4-;",
+		"P4oB,SCSP Direct sound,Enable,Disable;",
+		"P4oC,SCSP DSP sound,Enable,Disable;",
+		"P4oD,CD audio,Enable,Disable;",
 `else
-		"P3,Debug;",
-		"P3o4,SCSP slot 0,Enable,Disable;",
-		"P3o5,SCSP slot 1,Enable,Disable;",
-		"P3o6,SCSP slot 2,Enable,Disable;",
-		"P3o7,SCSP slot 3,Enable,Disable;",
-		"P3o8,SCSP slot 4,Enable,Disable;",
-		"P3o9,SCSP slot 5,Enable,Disable;",
-		"P3oA,SCSP slot 6,Enable,Disable;",
-		"P3oB,SCSP slot 7,Enable,Disable;",
-		"P3oC,SCSP slot 8,Enable,Disable;",
-		"P3oD,SCSP slot 9,Enable,Disable;",
-		"P3oE,SCSP slot 10,Enable,Disable;",
-		"P3oF,SCSP slot 11,Enable,Disable;",
-		"P3oG,SCSP slot 12,Enable,Disable;",
-		"P3oH,SCSP slot 13,Enable,Disable;",
-		"P3oI,SCSP slot 14,Enable,Disable;",
-		"P3oJ,SCSP slot 15,Enable,Disable;",
-		"P3oK,SCSP slot 16,Enable,Disable;",
-		"P3oL,SCSP slot 17,Enable,Disable;",
-		"P3oM,SCSP slot 18,Enable,Disable;",
-		"P3oN,SCSP slot 19,Enable,Disable;",
-		"P3oO,SCSP slot 20,Enable,Disable;",
-		"P3oP,SCSP slot 21,Enable,Disable;",
-		"P3oQ,SCSP slot 22,Enable,Disable;",
-		"P3oR,SCSP slot 23,Enable,Disable;",
-		"P3oS,SCSP slot 24,Enable,Disable;",
-		"P3oT,SCSP slot 25,Enable,Disable;",
-		"P3oU,SCSP slot 26,Enable,Disable;",
-		"P3oV,SCSP slot 27,Enable,Disable;",
-		"P3OS,SCSP slot 28,Enable,Disable;",
-		"P3OT,SCSP slot 29,Enable,Disable;",
-		"P3OU,SCSP slot 30,Enable,Disable;",
-		"P3OV,SCSP slot 31,Enable,Disable;",
+		"P4,Debug;",
+		"P4o4,SCSP slot 0,Enable,Disable;",
+		"P4o5,SCSP slot 1,Enable,Disable;",
+		"P4o6,SCSP slot 2,Enable,Disable;",
+		"P4o7,SCSP slot 3,Enable,Disable;",
+		"P4o8,SCSP slot 4,Enable,Disable;",
+		"P4o9,SCSP slot 5,Enable,Disable;",
+		"P4oA,SCSP slot 6,Enable,Disable;",
+		"P4oB,SCSP slot 7,Enable,Disable;",
+		"P4oC,SCSP slot 8,Enable,Disable;",
+		"P4oD,SCSP slot 9,Enable,Disable;",
+		"P4oE,SCSP slot 10,Enable,Disable;",
+		"P4oF,SCSP slot 11,Enable,Disable;",
+		"P4oG,SCSP slot 12,Enable,Disable;",
+		"P4oH,SCSP slot 13,Enable,Disable;",
+		"P4oI,SCSP slot 14,Enable,Disable;",
+		"P4oJ,SCSP slot 15,Enable,Disable;",
+		"P4oK,SCSP slot 16,Enable,Disable;",
+		"P4oL,SCSP slot 17,Enable,Disable;",
+		"P4oM,SCSP slot 18,Enable,Disable;",
+		"P4oN,SCSP slot 19,Enable,Disable;",
+		"P4oO,SCSP slot 20,Enable,Disable;",
+		"P4oP,SCSP slot 21,Enable,Disable;",
+		"P4oQ,SCSP slot 22,Enable,Disable;",
+		"P4oR,SCSP slot 23,Enable,Disable;",
+		"P4oS,SCSP slot 24,Enable,Disable;",
+		"P4oT,SCSP slot 25,Enable,Disable;",
+		"P4oU,SCSP slot 26,Enable,Disable;",
+		"P4oV,SCSP slot 27,Enable,Disable;",
+		"P4OS,SCSP slot 28,Enable,Disable;",
+		"P4OT,SCSP slot 29,Enable,Disable;",
+		"P4OU,SCSP slot 30,Enable,Disable;",
+		"P4OV,SCSP slot 31,Enable,Disable;",
 `endif
 
 		"-;",
@@ -528,12 +534,25 @@ module emu
 	reg rst_ram = 0;
 	reg download;
 	always @(posedge clk_sys) begin
+		reg [7:0] delay_cnt;
+		
 		download <= bios_download || cart_download;
-		rst_ram <= 0;
-		if (!bios_download && !cart_download && download) rst_ram <= 1;
+		if (delay_cnt) delay_cnt <= delay_cnt - 8'd1;
+		else rst_ram <= 0;
+		
+		if ((!bios_download && !cart_download && download) || reset) begin
+			rst_ram <= 1;
+			delay_cnt <= '1;
+		end
 	end
 	
 	wire rst_sys = reset | download | rst_ram;
+	
+`ifndef MISTER_DUAL_SDRAM
+	wire fast_timing = status[28];
+`else
+	wire fast_timing = 0;
+`endif
 	
 	//region select
 	reg [7:0] cd_area_symbol;
@@ -589,6 +608,7 @@ module emu
 	wire        SRAM_CS_N;
 	wire        RAML_CS_N;
 	wire        RAMH_CS_N;
+	wire        RAMH_RFS;
 	wire  [3:0] MEM_DQM_N;
 	wire        MEM_RD_N;
 	wire        MEM_WAIT_N;
@@ -757,6 +777,7 @@ module emu
 		.SRAM_CS_N(SRAM_CS_N),
 		.RAML_CS_N(RAML_CS_N),
 		.RAMH_CS_N(RAMH_CS_N),
+		.RAMH_RFS(RAMH_RFS),
 		.MEM_RD_N(MEM_RD_N),
 		.MEM_WAIT_N(MEM_WAIT_N),
 		
@@ -859,6 +880,8 @@ module emu
 		.SOUND_L(AUDIO_L),
 		.SOUND_R(AUDIO_R),
 		
+		.FAST(fast_timing),
+		
 		.SCRN_EN(SCRN_EN & SCRN_EN2),
 		.SND_EN(SND_EN & SND_EN2),
 		.SLOT_EN(SLOT_EN),
@@ -949,7 +972,7 @@ module emu
 		.SDRAM_CKE(SDRAM_CKE),
 		
 		.clk(clk_ram),
-		.init(reset),
+		.init(rst_ram),
 		.sync(DCE_R),
 	
 		.addr_a0(VDP2_RA0_A[17:1]),
@@ -999,27 +1022,27 @@ module emu
 		.*,
 		.clk(clk_ram),
 		.rst(reset || rst_ram),
-	
+		
 		//CPU bus (RAMH)
+`ifdef MISTER_DUAL_SDRAM
+		.ramh_addr('0),
+		.ramh_din ('0),
+		.ramh_wr  ('0),
+		.ramh_rd  (0),
+`else
 		.ramh_addr(MEM_A[19:2]),
 		.ramh_din (MEM_DO),
 		.ramh_wr  ({4{~RAMH_CS_N}} & ~MEM_DQM_N),
 		.ramh_rd  (~RAMH_CS_N & ~MEM_RD_N),
+`endif
 		.ramh_dout(ramh_do),
 		.ramh_busy(ramh_busy),
 		
 		//CD RAM
-`ifdef MISTER_DUAL_SDRAM
-		.cdram_addr('0),
-		.cdram_din ('0),
-		.cdram_wr  ('0),
-		.cdram_rd  (0),
-`else
 		.cdram_addr(CD_RAM_A[18:1]),
 		.cdram_din (CD_RAM_D),
 		.cdram_wr  (CD_RAM_WE & {2{CD_RAM_CS}}),
 		.cdram_rd  (CD_RAM_RD & CD_RAM_CS),
-`endif
 		.cdram_dout(cdram_do),
 		.cdram_busy(cdram_busy),
 	
@@ -1041,17 +1064,10 @@ module emu
 		.vdp1vram_busy(vdp1vram_busy),
 	
 		//VDP1 FB (rest)
-`ifdef DEBUG
-		.vdp1fb_addr('0),
-		.vdp1fb_din ('0),
-		.vdp1fb_wr  ('0),
-		.vdp1fb_rd  (0),
-`else
 		.vdp1fb_addr(VDP1_A),
 		.vdp1fb_din (VDP1_D),
 		.vdp1fb_wr  (VDP1_WE),
 		.vdp1fb_rd  (VDP1_RD),
-`endif
 		.vdp1fb_dout(vdp1fb_do),
 		.vdp1fb_busy(vdp1fb_busy),
 		
@@ -1092,26 +1108,21 @@ module emu
 	);
 	assign VDP1_VRAM_Q = vdp1vram_do;
 	assign VDP1_VRAM_RDY = ~vdp1vram_busy;
-//	assign VDP1_FB_RDY = 1;
-	
-	assign MEM_DI     = !RAMH_CS_N ? ramh_do : raml_do;
-	assign MEM_WAIT_N = ~(raml_busy | ramh_busy);
 
 	assign CD_BUF_DI = cdbuf_do;
 	assign CD_BUF_RDY = ~cdbuf_busy;
 	
 	assign CART_MEM_Q = cart_do;
 	assign CART_MEM_RDY = ~cart_busy;
-`ifndef MISTER_DUAL_SDRAM
+	
 	assign CD_RAM_Q = cdram_do;
 	assign CD_RAM_RDY = ~cdram_busy;
-`endif
 
 
 `ifdef MISTER_DUAL_SDRAM
 	//SDRAM2
-	wire sdr2_busy0, sdr2_busy1, sdr2_busy2;
-	wire [15:0] sdr2_do0,sdr2_do1,sdr2_do2;
+	wire sdr2_busy;
+	wire [31:0] sdr2_do;
 	sdram2 sdram2
 	(
 		.SDRAM_CLK(SDRAM2_CLK),
@@ -1123,39 +1134,25 @@ module emu
 		.SDRAM_nRAS(SDRAM2_nRAS),
 		.SDRAM_nCAS(SDRAM2_nCAS),
 		
-		.init(reset),
+		.init(rst_ram),
 		.clk(clk_ram),
-
-		.rfs(0/*SCSP_RAM_RFS*/),
 		
-		.addr0({6'b000001,SCSP_RAM_A[18:1]}),
-		.din0(SCSP_RAM_D),
-		.dout0(sdr2_do0),
-		.rd0(0/*SCSP_RAM_RD & SCSP_RAM_CS*/),
-		.wrl0(0/*SCSP_RAM_WE[0] & SCSP_RAM_CS*/),
-		.wrh0(0/*SCSP_RAM_WE[1] & SCSP_RAM_CS*/),
-		.busy0(sdr2_busy0),
-
-		.addr1({6'b000000,CD_RAM_A[18:1]}),
-		.din1(CD_RAM_D),
-		.dout1(sdr2_do1),
-		.rd1(CD_RAM_RD & CD_RAM_CS),
-		.wrl1(CD_RAM_WE[0] & CD_RAM_CS),
-		.wrh1(CD_RAM_WE[1] & CD_RAM_CS),
-		.busy1(sdr2_busy1),
-
-		.addr2({6'b000010,VDP1_VRAM_A[18:1]}),
-		.din2(VDP1_VRAM_D),
-		.dout2(sdr2_do2),
-		.rd2(0/*VDP1_VRAM_RD*/),
-		.wrl2(0/*VDP1_VRAM_WE[0]*/),
-		.wrh2(0/*VDP1_VRAM_WE[1]*/),
-		.busy2(sdr2_busy2)
+		.addr({MEM_A[19:2],1'b0}),
+		.din(MEM_DO),
+		.wr({4{~RAMH_CS_N}} & ~MEM_DQM_N),
+		.rd(~RAMH_CS_N & ~MEM_RD_N),
+		.dout(sdr2_do),
+		.rfs(RAMH_RFS),
+		.busy(sdr2_busy)
 	);
-//	assign SCSP_RAM_Q = sdr2_do0;
-//	assign SCSP_RAM_RDY = ~sdr2_busy0;
-	assign CD_RAM_Q = sdr2_do1;
-	assign CD_RAM_RDY = ~sdr2_busy1;
+`endif
+	
+`ifdef MISTER_DUAL_SDRAM
+	assign MEM_DI     = !RAMH_CS_N ? sdr2_do : raml_do;
+	assign MEM_WAIT_N = !RAMH_CS_N ? ~sdr2_busy : ~raml_busy;
+`else
+	assign MEM_DI     = !RAMH_CS_N ? ramh_do : raml_do;
+	assign MEM_WAIT_N = !RAMH_CS_N ? ~ramh_busy : ~raml_busy;
 `endif
 
 
@@ -1569,6 +1566,7 @@ module emu
 		old_state <= ps2_key[10];
 		if((ps2_key[10] != old_state) && pressed) begin
 			casex(code)
+`ifdef DEBUG
 				'h005: begin SCRN_EN[0] <= ~SCRN_EN[0]; end 	// F1
 				'h006: begin SCRN_EN[1] <= ~SCRN_EN[1]; end 	// F2
 				'h004: begin SCRN_EN[2] <= ~SCRN_EN[2]; end 	// F3
@@ -1576,19 +1574,20 @@ module emu
 				'h003: begin SCRN_EN[4] <= ~SCRN_EN[4]; end 	// F5
 				'h00B: begin SCRN_EN[5] <= ~SCRN_EN[5]; end 	// F6
 				'h083: begin SCRN_EN[6] <= ~SCRN_EN[6]; end 	// F7
-				'h00A: begin SND_EN[0] <= ~SND_EN[0]; end 	// F8
+				'h00A: begin SCRN_EN[7] <= ~SCRN_EN[7];
+				             SND_EN[0] <= ~SND_EN[0]; end 	// F8
 				'h001: begin SND_EN[1] <= ~SND_EN[1]; end 	// F9
 				'h009: begin SND_EN[2] <= ~SND_EN[2]; end 	// F10
 				'h078: begin SCRN_EN <= '1; SND_EN <= '1; DBG_EXT <= '0; end 	// F11
-`ifdef DEBUG
 //				'h009: begin DBG_BREAK <= ~DBG_BREAK; end 	// F10
 //				'h078: begin DBG_RUN <= 1; end 	// F11
 				'h177: begin DBG_PAUSE <= ~DBG_PAUSE; end 	// Pause
 `endif
+				default:;
 			endcase
 		end
 		
-		if((ps2_key[10] != old_state) && pressed) begin
+		if(/*(ps2_key[10] != old_state) &&*/ pressed) begin
 			casex(code)
 `ifdef DEBUG
 				'h016: begin DBG_EXT[0] <= 1/*~DBG_EXT[0]*/; end 	// 1

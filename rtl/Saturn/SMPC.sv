@@ -213,7 +213,7 @@ module SMPC (
 		bit         IRQV_N_OLD;
 		bit [ 1: 0] FRAME_CNT;
 		bit [15: 0] WAIT_CNT;
-		bit [15: 0] INTBACK_WAIT_CNT;
+		bit [16: 0] TIME_CNT,INTBACK_TIME;
 		bit         SRES_EXEC;
 		bit         INTBACK_EXEC;
 		bit         INTBACK_PERI;
@@ -312,15 +312,17 @@ module SMPC (
 					SSHNMI_N <= 1;
 				end
 				
+				TIME_CNT <= TIME_CNT + 17'd1;
+				if (!IRQV_N && IRQV_N_OLD) begin
+					INTBACK_TIME <= TIME_CNT - 17'd4000;//1ms prior to vblank
+					TIME_CNT <= '0;
+				end
+				
 				if (!IRQV_N) begin
 					INTBACK_OPTIM_COND <= 0;
-					INTBACK_WAIT_CNT <= 16'd51700;
 				end
-				else if (!INTBACK_WAIT_CNT) begin
+				else if (TIME_CNT == INTBACK_TIME) begin
 					INTBACK_OPTIM_COND <= 1;
-				end
-				else begin
-					INTBACK_WAIT_CNT <= INTBACK_WAIT_CNT - 16'd1;
 				end
 				
 				SR[4:0] <= {~SRES_N,IREG[1][7:4]};
@@ -343,7 +345,7 @@ module SMPC (
 						else if (COMREG_SET && !SRES_EXEC) begin
 							COMREG_SET <= 0;
 							OREG_CNT <= '0;
-							WAIT_CNT <= 16'd90;
+							WAIT_CNT <= 16'd60;
 							NEXT_COMM_ST <= CS_COMMAND;
 							COMM_ST <= CS_WAIT;
 						end
@@ -375,43 +377,43 @@ module SMPC (
 					CS_COMMAND: begin
 						case (COMREG) 
 							8'h00: begin		//MSHON
-								WAIT_CNT <= 16'd120;
+								WAIT_CNT <= 16'd120 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h02: begin		//SSHON
-								WAIT_CNT <= 16'd120;
+								WAIT_CNT <= 16'd120 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h03: begin		//SSHOFF
-								WAIT_CNT <= 16'd120;
+								WAIT_CNT <= 16'd120 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h06: begin		//SNDON
-								WAIT_CNT <= 16'd120;
+								WAIT_CNT <= 16'd120 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h07: begin		//SNDOFF
-								WAIT_CNT <= 16'd120;
+								WAIT_CNT <= 16'd120 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h08: begin		//CDON
-								WAIT_CNT <= 16'd159;
+								WAIT_CNT <= 16'd160 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h09: begin		//CDOFF
-								WAIT_CNT <= 16'd159;
+								WAIT_CNT <= 16'd160 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
@@ -470,31 +472,31 @@ module SMPC (
 							end
 							
 							8'h16: begin		//SETTIME
-								WAIT_CNT <= 16'd279;
+								WAIT_CNT <= 16'd280 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h17: begin		//SETSMEM
-								WAIT_CNT <= 16'd159;
+								WAIT_CNT <= 16'd160 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h18: begin		//NMIREQ
-								WAIT_CNT <= 16'd127;
+								WAIT_CNT <= 16'd130 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h19: begin		//RESENAB
-								WAIT_CNT <= 16'd127;
+								WAIT_CNT <= 16'd130 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
 							
 							8'h1A: begin		//RESDISA
-								WAIT_CNT <= 16'd127;
+								WAIT_CNT <= 16'd130 - 16'd60;
 								NEXT_COMM_ST <= CS_EXEC;
 								COMM_ST <= CS_WAIT;
 							end
