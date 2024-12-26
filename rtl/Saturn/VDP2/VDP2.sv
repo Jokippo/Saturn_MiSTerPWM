@@ -118,8 +118,7 @@ module VDP2 (
 	output RotCoord_t   RPK_DBG,
 	output [34:0] KAx0_DBG,
 	output [ 3:0] RA_D_ERR,
-	output [ 3:0] RB_D_ERR,
-	output        DBG_REG_WR
+	output [ 3:0] RB_D_ERR
 `endif
 );
 	
@@ -129,6 +128,8 @@ module VDP2 (
 	parameter HRES_352  = 9'd455;//
 	parameter HS_START_320  = 9'd350;
 	parameter HS_START_352  = 9'd380;
+	parameter HS_MID_320  = 9'd137;
+	parameter HS_MID_352  = 9'd153;
 	parameter HBL_START_320 = 9'd312;
 	parameter HBL_START_352 = 9'd344;
 //	parameter HBL_END_320 = 9'd415 - 9'd1;//9'd410;
@@ -137,9 +138,13 @@ module VDP2 (
 	parameter VRES_PAL  = 9'd313;
 	parameter VS_START_224  = 9'd239;
 	parameter VS_START_240  = 9'd245;//?
+	parameter VS_START_PAL_224  = VS_START_224+9'd25;
+	parameter VS_START_PAL_240  = VS_START_240+9'd24;
 	parameter VS_START_256  = 9'd276;//?
 	parameter VS_END_224    = VS_START_224 + 9'd3;
 	parameter VS_END_240    = VS_START_240 + 9'd3;
+	parameter VS_END_PAL_224    = VS_START_PAL_224 + 9'd3;
+	parameter VS_END_PAL_240    = VS_START_PAL_240 + 9'd3;
 	parameter VS_END_256    = VS_START_256 + 9'd3;
 	parameter VBL_START_224 = 9'd224;
 	parameter VBL_START_240 = 9'd240;
@@ -170,6 +175,7 @@ module VDP2 (
 	
 	bit          DOT_CE_R,DOT_CE_F;
 	bit  [ 8: 0] H_CNT, V_CNT;
+	bit  [ 8: 0] VCT;
 	bit  [ 8: 0] SCRNX, SCRNY;
 	bit          SCRNX0;
 	bit  [ 3: 0] MOSAIC_HCNT,MOSAIC_VCNT;
@@ -210,16 +216,21 @@ module VDP2 (
 //	wire PRELAST_DOT = (H_CNT == HRES_320 - 2 && !HRES[0]) || (H_CNT == HRES_352 - 2 && HRES[0]);
 	wire [8:0] VBL_HPOS = !HRES[0] ? 9'h15B : 9'h177;
 	wire [8:0] HS_START = (!HRES[0] ? HS_START_320 : HS_START_352) - (!PAL ? 9'd0 : 9'd4);
+	wire [8:0] HS_MID = (!HRES[0] ? HS_MID_320 : HS_MID_352) - (!PAL ? 9'd0 : 9'd4);
 	wire [8:0] HS_END =  HS_START + 9'd32; 
 	wire [8:0] HBL_END = !HRES[1] ? 9'd3 : 9'd2;
 	wire [8:0] HDISP_END = !HRES[0] ? 9'd320 - 9'd1 : 9'd352 - 9'd1;
 	wire [8:0] VBL_START = VBL_START_224 + {VRES,4'h0};
-	wire [8:0] VS_START  = (!VRES[1] ? (!VRES[0] ? VS_START_224 : VS_START_240) : VS_START_256) + (REGS.TVMD.LSMD[1] && ODD ? 9'd1 : 9'd0);
-	wire [8:0] VS_END    = !VRES[1] ? (!VRES[0] ? VS_END_224 : VS_END_240) : VS_END_256;
-	wire [8:0] VSYNC_HSTART = REGS.TVMD.LSMD[1] && ODD ? 9'd176 : 9'd352;
+	wire [8:0] VS_NTSC_START  = (!VRES[1] ? (!VRES[0] ? VS_START_224 : VS_START_240) : VS_START_256);
+	wire [8:0] VS_PAL_START  = (!VRES[1] ? (!VRES[0] ? VS_START_PAL_224 : VS_START_PAL_240) : VS_START_256);
+	wire [8:0] VS_NTSC_END    = !VRES[1] ? (!VRES[0] ? VS_END_224 : VS_END_240) : VS_END_256;
+	wire [8:0] VS_PAL_END    = !VRES[1] ? (!VRES[0] ? VS_END_PAL_224 : VS_END_PAL_240) : VS_END_256;
+	wire [8:0] VS_START  = PAL ? VS_PAL_START : VS_NTSC_START;
+	wire [8:0] VS_END    = PAL ? VS_PAL_END : VS_NTSC_END;
+	wire [8:0] VSYNC_HSTART = REGS.TVMD.LSMD[1] && ODD ? HS_MID : HS_START;
 	wire [8:0] VBORD_START  = !VRES[1] ? (!VRES[0] ? 9'd263-9'd12 : 9'd263-9'd4) : 9'd313-9'd0;
 	wire [8:0] VBORD_END  = !VRES[1] ? (!VRES[0] ? 9'd224+9'd12 : 9'd240+9'd4) : 9'd256+9'd0;
-	wire [8:0] BREAK_LINE  = !PAL ? (VRES_NTSC - 9'd3) : (VRES_PAL - 9'd3);
+	wire [8:0] BREAK_LINE  = (!PAL ? (VRES_NTSC - 9'd3) : (VRES_PAL - 9'd3)) - (REGS.TVMD.LSMD[1] && ODD ? 9'd1 : 9'd0);
 	wire [8:0] NEXT_TO_LAST_LINE  = 9'h1FE;
 	wire [8:0] LAST_LINE  = 9'h1FF;
 	wire IS_LAST_LINE = (V_CNT == LAST_LINE);
@@ -267,7 +278,7 @@ module VDP2 (
 				HBLANK <= 1;
 			end
 
-			if (H_CNT == VSYNC_HSTART) begin
+			if (H_CNT == VSYNC_HSTART - 1) begin
 				if (V_CNT == VS_START - 1) begin
 					VSYNC <= 1;
 				end else if (V_CNT == VS_END - 1) begin
@@ -300,6 +311,15 @@ module VDP2 (
 			VRES <= REGS.TVMD.VRESO[1:0] & {PAL,1'b1};
 			LSMD <= REGS.TVMD.LSMD;
 			/*if (VBLANK)*/ DISP <= REGS.TVMD.DISP;
+		end
+		else if (DOT_CE_F) begin
+			if (ODD && H_CNT == VSYNC_HSTART - 1) begin
+				if (V_CNT == VS_START - 1) begin
+					VSYNC <= 1;
+				end else if (V_CNT == VS_END - 1) begin
+					VSYNC <= 0;
+				end
+			end
 		end
 	end
 	wire DDI = &LSMD;//Double-density interlace
@@ -535,6 +555,7 @@ module VDP2 (
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			SCRNX0 <= 0;
+			VCT <= '0;
 		end
 		else if (DOT_CE_F) begin
 			SCRNX0 <= 1;
@@ -550,6 +571,16 @@ module VDP2 (
 				SCRNY <= SCRNY + 1'd1;
 				if (V_CNT == LAST_LINE) begin
 					SCRNY <= '0;
+				end
+			end
+			
+			
+			if (H_CNT == RPB_FETCH_START - 1) begin
+				VCT <= VCT + 9'd1;
+				if (VCT == BREAK_LINE) begin
+					VCT <= 9'h1FE;
+				end else if (VCT == LAST_LINE) begin
+					VCT <= '0;
 				end
 			end
 		end
@@ -921,6 +952,7 @@ module VDP2 (
 	bit          VRAM_WLOCK;
 	always @(posedge CLK or negedge RST_N) begin
 		bit DTEN_N_OLD,CS_N_OLD;
+		bit VRAMA_ALLOW,VRAMB_ALLOW;
 		
 		if (!RST_N) begin
 			VRAMA0_A <= '0;
@@ -933,6 +965,8 @@ module VDP2 (
 			VRAMA1_RD <= 0;
 			VRAMB0_RD <= 0;
 			VRAMB1_RD <= 0;
+			VRAMA_ALLOW <= 0;
+			VRAMB_ALLOW <= 0;
 			NBG_PN_CNT <= '{2{'0}};
 			NBG_CH_CNT <= '{4{'0}};
 			NBG_CH_EN <= '{4{0}};
@@ -1098,9 +1132,10 @@ module VDP2 (
 						VRAMA1_RD <= 1;
 					end
 					
+					VRAMA_ALLOW <= 0;
 					if (!NBG_A0VA.PN && !RBG_A0VA.PN && !NBG_A0VA.CH && !RBG_A0VA.CH && !RBG_A0VA.CT && !NBG_A0VA.VS &&
 						 !NBG_A1VA.PN && !RBG_A1VA.PN && !NBG_A1VA.CH && !RBG_A1VA.CH && !RBG_A1VA.CT && !NBG_A1VA.VS && !VA_PIPE[0].AxNA) begin
-						if ((VRAM_READ_PEND && (VRAMA0_READ || VRAMA1_READ)) || (VRAM_WRITE_PEND && !VRAM_WA[18])) begin
+						if ((VRAM_READ_PEND && (VRAMA0_READ || VRAMA1_READ)) || (VRAM_WRITE_PEND && !VRAM_WA[18]) && (VRAMA_ALLOW || !REGS.RAMCTL.VRAMD)) begin
 							if (VRAM_WRITE_PEND) begin
 								VRAMA0_A <= {VRAM_WA[17:2],1'b0};
 								VRAMA_D <= VRAM_D;
@@ -1115,6 +1150,7 @@ module VDP2 (
 								VRAM_READ_PEND <= 0;
 							end
 						end
+						VRAMA_ALLOW <= 1;
 					end
 					
 					if (NBG_B0VA.PN && NxPN_ADDR[NBG_B0VA.Nx][18:17] == 2'b10) begin
@@ -1169,9 +1205,10 @@ module VDP2 (
 						VRAMB1_RD <= 1;
 					end
 					
+					VRAMB_ALLOW <= 0;
 					if (!NBG_B0VA.PN && !RBG_B0VA.PN && !NBG_B0VA.CH && !RBG_B0VA.CH && !RBG_B0VA.CT && !NBG_B0VA.VS &&
 						 !NBG_B1VA.PN && !RBG_B1VA.PN && !NBG_B1VA.CH && !RBG_B1VA.CH && !RBG_B1VA.CT && !NBG_B1VA.VS && !VA_PIPE[0].BxNA) begin
-						if ((VRAM_READ_PEND && (VRAMB0_READ || VRAMB1_READ)) || (VRAM_WRITE_PEND && VRAM_WA[18])) begin
+						if ((VRAM_READ_PEND && (VRAMB0_READ || VRAMB1_READ)) || (VRAM_WRITE_PEND && VRAM_WA[18]) && (VRAMB_ALLOW || !REGS.RAMCTL.VRBMD)) begin
 							if (VRAM_WRITE_PEND) begin
 								VRAMB0_A <= {VRAM_WA[17:2],1'b0};
 								VRAMA_D <= VRAM_D;//////////////////////
@@ -1187,6 +1224,7 @@ module VDP2 (
 								VRAM_READ_PEND <= 0;
 							end
 						end
+						VRAMB_ALLOW <= 1;
 					end
 				end
 				VRAM_READ_PIPE[1] <= VRAM_READ_PIPE[0];
@@ -2472,7 +2510,7 @@ module VDP2 (
 					NCC[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].CC : NSxREG[1].BMCC;              NCC[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].CC : NSxREG[1].BMCC;
 					NCH[1] = NBG_CH[1];
 					NCHCN[1] = NSxREG[1].CHCN;
-					NEN[1] = BG_PIPE[3].NxCH[1] & (!BG_PIPE[3].NxCH_CNT[1][1] | NSxREG[1].ZMHF) & BG_PIPE[2].NxCH_EN[1];
+					NEN[1] = BG_PIPE[3].NxCH[1] & (!BG_PIPE[3].NxCH_CNT[1][1] | (NSxREG[1].ZMHF & ~NSxREG[1].ZMQT)) & BG_PIPE[2].NxCH_EN[1];
 				end else if (BG_PIPE[3].NxCH[1] && NSxREG[1].CHCN == 3'b001 && NSxREG[1].ZMHF) begin
 					NCNT[1] = BG_PIPE[3].NxCH_CNT[1];
 					NPALN[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].PALN : {NSxREG[1].BMP,4'b0000}; NPALN[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].PALN : {NSxREG[1].BMP,4'b0000};
@@ -2549,7 +2587,7 @@ module VDP2 (
 					NCC[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].CC : NSxREG[0].BMCC;
 					NCH[0] = NBG_CH[0];
 					NCHCN[0] = NSxREG[0].CHCN;
-					NEN[0] = BG_PIPE[3].NxCH[0] & (!BG_PIPE[3].NxCH_CNT[0][1] | NSxREG[0].ZMHF) & BG_PIPE[2].NxCH_EN[0];
+					NEN[0] = BG_PIPE[3].NxCH[0] & (!BG_PIPE[3].NxCH_CNT[0][1] | (NSxREG[0].ZMHF & ~NSxREG[0].ZMQT)) & BG_PIPE[2].NxCH_EN[0];
 				end else if (BG_PIPE[3].NxCH[0] && NSxREG[0].CHCN == 3'b001 && NSxREG[0].ZMHF) begin
 					NCNT[0] = BG_PIPE[3].NxCH_CNT[0];
 					NPALN[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].PALN : {NSxREG[0].BMP,4'b0000}; NPALN[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].PALN : {NSxREG[0].BMP,4'b0000};
@@ -3918,7 +3956,7 @@ module VDP2 (
 					endcase
 					if ({A[8:1],1'b0} == 9'h002 && !REGS.EXTEN.EXLTEN) begin	//EXTEN
 						REGS.HCNT.HCT = {H_CNT,DOTCLK_DIV[1]};
-						REGS.VCNT.VCT = LSMD == 2'b11 ? {V_CNT,~ODD} : {1'b0,V_CNT};
+						REGS.VCNT.VCT = LSMD == 2'b11 ? {VCT,~ODD} : {1'b0,VCT};
 						REGS.TVSTAT.EXLTFG <= 1;
 					end
 					if ({A[8:1],1'b0} == 9'h004) begin								//TVSTAT
@@ -3931,12 +3969,11 @@ module VDP2 (
 			EXLAT_N_OLD <= EXLAT_N;
 			if (!EXLAT_N && EXLAT_N_OLD && REGS.EXTEN.EXLTEN) begin	//EXTEN
 				REGS.HCNT.HCT = {H_CNT,DOTCLK_DIV[1]};
-				REGS.VCNT.VCT = LSMD == 2'b11 ? {V_CNT,~ODD} : {1'b0,V_CNT};
+				REGS.VCNT.VCT = LSMD == 2'b11 ? {VCT,~ODD} : {1'b0,VCT};
 				REGS.TVSTAT.EXLTFG <= 1;
 			end
 		end
 	end
-	assign DBG_REG_WR = REG_SEL && !REQ_N && !WE_N && !DTEN_N;
 	
 	
 	always @(posedge CLK or negedge RST_N) begin
