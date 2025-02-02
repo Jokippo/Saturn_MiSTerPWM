@@ -220,7 +220,7 @@ module VDP2 (
 	wire [8:0] HS_END =  HS_START + 9'd32; 
 	wire [8:0] HBL_END = !HRES[1] ? 9'd3 : 9'd2;
 	wire [8:0] HDISP_END = !HRES[0] ? 9'd320 - 9'd1 : 9'd352 - 9'd1;
-	wire [8:0] VBL_START = VBL_START_224 + {VRES,4'h0};
+	wire [8:0] VBL_START = VBL_START_224 + (!VRES[1] || !PAL ? (!VRES[0] ? 9'd0 : 9'd16) : 9'd32);
 	wire [8:0] VS_NTSC_START  = (!VRES[1] ? (!VRES[0] ? VS_START_224 : VS_START_240) : VS_START_256);
 	wire [8:0] VS_PAL_START  = (!VRES[1] ? (!VRES[0] ? VS_START_PAL_224 : VS_START_PAL_240) : VS_START_256);
 	wire [8:0] VS_NTSC_END    = !VRES[1] ? (!VRES[0] ? VS_END_224 : VS_END_240) : VS_END_256;
@@ -402,8 +402,10 @@ module VDP2 (
 	wire [ 8: 0] BS_FETCH_START = !HRES[0] ? 9'h18A : 9'h1A6;
 	wire [ 8: 0] REFRESH_START = !HRES[0] ? 9'h190 : 9'h1AC;
 	wire [ 8: 0] REFRESH_END = !HRES[0] ? 9'h194 : 9'h1B0;
-	wire [ 8: 0] NOACCESS_START = !HRES[0] ? 9'h18D : 9'h1A9;
-	wire [ 8: 0] NOACCESS_END = !HRES[0] ? 9'h18F : 9'h1AB;
+	wire [ 8: 0] NOACCESS_START = !HRES[0] ? 9'h0 : 9'h1A9;
+	wire [ 8: 0] NOACCESS_END = !HRES[0] ? 9'h1FF : 9'h1AB;
+	wire [ 8: 0] NOACCESS2_START = !HRES[0] ? 9'h0 : 9'h162;
+	wire [ 8: 0] NOACCESS2_END = !HRES[0] ? 9'h1FF : 9'h165;
 	wire [ 8: 0] NBG_SCREEN_START = !HRES[0] ? 9'h19D : 9'h1B9;
 	
 	bit  [ 2: 0] CELLX;
@@ -538,13 +540,13 @@ module VDP2 (
 				DOT_FETCH <= 0;
 			end
 			
-			if (H_CNT == REFRESH_START - 1) begin
+			if (H_CNT == REFRESH_START - 1 || H_CNT == NOACCESS2_START - 1) begin
 				REFRESH <= 1;
-			end else if (H_CNT == REFRESH_END) begin
+			end else if (H_CNT == REFRESH_END || H_CNT == NOACCESS2_END) begin
 				REFRESH <= 0;
 			end
 			
-			if (H_CNT == NOACCESS_START - 1 && HRES[0]) begin
+			if (H_CNT == NOACCESS_START - 1) begin
 				NOACCESS <= 1;
 			end else if (H_CNT == NOACCESS_END) begin
 				NOACCESS <= 0;
@@ -936,6 +938,7 @@ module VDP2 (
 	NxCHCNT_t    NBG_CH_CNT;
 	NxCHCNT_t    NBG_BM_CNT;
 	bit          NBG_CH_EN[4];
+	bit          RBG_CT_EN[2];
 	bit  [ 2: 0] LS_POS;
 	bit  [ 3: 2] LS_VAL_OFFS[2];
 	bit  [12: 2] LS_TBL_OFFS[2];
@@ -1234,7 +1237,7 @@ module VDP2 (
 				if (LS_FETCH) begin
 					VRAM_BANK <= NxLS_ADDR[LS_POS[2]][18:17];
 					
-					if ((WSCRNY[2:0] & NxLSSMask(NSxREG[{1'b0,LS_POS[2]}].LSS,DDI)) == 3'b000) begin
+					if ((WSCRNY[2:0] & NxLSSMask(NSxREG[{1'b0,LS_POS[2]}].LSS,1'b0) & {2'b11,~DDI}) == 3'b000) begin
 						case (LS_POS[1:0])
 							2'd0: if (NSxREG[{1'b0,LS_POS[2]}].LSCX) LS_VAL_OFFS[LS_POS[2]] <= LS_VAL_OFFS[LS_POS[2]] + 2'd1;
 							2'd1: if (NSxREG[{1'b0,LS_POS[2]}].LSCY) LS_VAL_OFFS[LS_POS[2]] <= LS_VAL_OFFS[LS_POS[2]] + 2'd1;
@@ -1267,9 +1270,10 @@ module VDP2 (
 					VRAM_BANK <= LN_ADDR[18:17];
 				end else if (!DISP || VBLANK2 || (!REGS.BGON.N0ON && !REGS.BGON.N1ON && !REGS.BGON.N2ON && !REGS.BGON.N3ON && !REGS.BGON.R0ON && !REGS.BGON.R1ON)) begin
 					
-				end else if (NBG_FETCH || NCH_FETCH || RBG_FETCH || RCH_FETCH || NVCS_FETCH) begin
+				end else if (NBG_FETCH || NCH_FETCH || RBG_FETCH || RCH_FETCH || CT_FETCH || NVCS_FETCH) begin
 					NBG_PN_EN <= '{4{0}};
 					NBG_CH_EN <= '{4{0}};
+					RBG_CT_EN <= '{2{0}};
 					if (NBG_A0VA.PN) begin
 						if (NxPN_ADDR[NBG_A0VA.Nx][18:17] == 2'b00) begin
 							NBG_PN_EN[NBG_A0VA.Nx] <= 1;
@@ -1291,6 +1295,9 @@ module VDP2 (
 					end 
 					if (NBG_A0VA.VS && NxVS_ADDR[18:17] == 2'b00) begin
 						VS_OFFS <= VS_OFFS + 1'd1;
+					end
+					if (RBG_A0VA.CT && RxCT_ADDR[RBG_A0VA.Rx][18:17] == 2'b00) begin
+						RBG_CT_EN[RBG_A0VA.Rx] <= 1;
 					end
 					
 					if (NBG_A1VA.PN) begin
@@ -1315,6 +1322,9 @@ module VDP2 (
 					if (NBG_A1VA.VS && NxVS_ADDR[18:17] == 2'b01) begin
 						VS_OFFS <= VS_OFFS + 1'd1;
 					end
+					if (RBG_A1VA.CT && RxCT_ADDR[RBG_A1VA.Rx][18:17] == 2'b01) begin
+						RBG_CT_EN[RBG_A1VA.Rx] <= 1;
+					end
 					
 					if (NBG_B0VA.PN) begin
 						if (NxPN_ADDR[NBG_B0VA.Nx][18:17] == 2'b10) begin
@@ -1338,6 +1348,9 @@ module VDP2 (
 					if (NBG_B0VA.VS && NxVS_ADDR[18:17] == 2'b10) begin
 						VS_OFFS <= VS_OFFS + 1'd1;
 					end
+					if (RBG_B0VA.CT && RxCT_ADDR[RBG_B0VA.Rx][18:17] == 2'b10) begin
+						RBG_CT_EN[RBG_B0VA.Rx] <= 1;
+					end
 					
 					if (NBG_B1VA.PN) begin
 						if (NxPN_ADDR[NBG_B1VA.Nx][18:17] == 2'b11) begin
@@ -1360,6 +1373,9 @@ module VDP2 (
 					end 
 					if (NBG_B1VA.VS && NxVS_ADDR[18:17] == 2'b11) begin
 						VS_OFFS <= VS_OFFS + 1'd1;
+					end
+					if (RBG_B1VA.CT && RxCT_ADDR[RBG_B1VA.Rx][18:17] == 2'b11) begin
+						RBG_CT_EN[RBG_B1VA.Rx] <= 1;
 					end
 				end
 				
@@ -1573,8 +1589,8 @@ module VDP2 (
 		bit          LS_RD[2];
 		bit          SCYN_UPD[4];
 		
-		LS_RD[0] = ((WSCRNY[2:0] & NxLSSMask(NSxREG[0].LSS,DDI)) == 3'b000);
-		LS_RD[1] = ((WSCRNY[2:0] & NxLSSMask(NSxREG[1].LSS,DDI)) == 3'b000);
+		LS_RD[0] = ((WSCRNY[2:0] & NxLSSMask(NSxREG[0].LSS,1'b0) & {2'b11,~DDI}) == 3'b000);
+		LS_RD[1] = ((WSCRNY[2:0] & NxLSSMask(NSxREG[1].LSS,1'b0) & {2'b11,~DDI}) == 3'b000);
 		
 		if (!RST_N) begin
 			// synopsys translate_off
@@ -1819,20 +1835,18 @@ module VDP2 (
 					CTD[1] <= CTData(RPxREG[1].KMD, RPxREG[1].KDBS, RP_WD);
 				end
 				
-//				if (VA_PIPE[2].RxA0CT[0] || VA_PIPE[2].RxA1CT[0] || VA_PIPE[2].RxB0CT[0] || VA_PIPE[2].RxB1CT[0] || VA_PIPE[2].RxCRCT[0]) begin
-//					CTD[0] <= RBG_CT_PIPE[0][0];
-//					if (R0RP_PIPE[2]) CTD[1] <= RBG_CT_PIPE[0][0];
-//				end
-				
 				if (RBG_PIPE[2].RxCT[0] || RBG_PIPE[2].RxCRCT[0]) begin
 					CT_RP = R0RP_PIPE[1];
 					if (RBG_PIPE[2].RxCT[0]) 
-						case (RBG_PIPE[2].RxCTS[0])
-							2'd0: RCT_WD = RA0_BUF;
-							2'd1: RCT_WD = RA1_BUF;
-							2'd2: RCT_WD = RB0_BUF;
-							2'd3: RCT_WD = RB1_BUF;
-						endcase
+						if (RBG_PIPE[1].RxCT_EN[0]) 
+							case (RBG_PIPE[2].RxCTS[0])
+								2'd0: RCT_WD = RA0_BUF;
+								2'd1: RCT_WD = RA1_BUF;
+								2'd2: RCT_WD = RB0_BUF;
+								2'd3: RCT_WD = RB1_BUF;
+							endcase
+						else
+							RCT_WD = '0;
 					else
 						RCT_WD = CT_CRAM_BUF;
 						
@@ -2137,10 +2151,10 @@ module VDP2 (
 	wire [ 8: 0] WxSY[2] = '{REGS.WPSY0.WxSY,REGS.WPSY1.WxSY};
 	wire [ 8: 0] WxEY[2] = '{REGS.WPEY0.WxEY,REGS.WPEY1.WxEY};
 	
-	wire W0_HIT = ({SCRNX,SCRNX0&HRES[1]} >= {WxSX[0][9:1],WxSX[0][0]&HRES[1]} || {WxSX[0][9:1],WxSX[0][0]|~HRES[1]} == 10'h3FF) && {SCRNX,SCRNX0&HRES[1]} <= {WxEX[0][9:1],WxEX[0][0]&HRES[1]} && {WxEX[0][9:1],WxEX[0][0]&HRES[1]} <= 10'h380 &&
-	               WSCRNY                 >= {WxSY[0][8:1],WxSY[0][0]&~DDI}                                                      && WSCRNY                 <= {WxEY[0][8:1],WxEY[0][0]&~DDI}    && WxEY[0][8:0] < 9'h1FC;
-	wire W1_HIT = ({SCRNX,SCRNX0&HRES[1]} >= {WxSX[1][9:1],WxSX[1][0]&HRES[1]} || {WxSX[1][9:1],WxSX[1][0]|~HRES[1]} == 10'h3FF) && {SCRNX,SCRNX0&HRES[1]} <= {WxEX[1][9:1],WxEX[1][0]&HRES[1]} && {WxEX[1][9:1],WxEX[1][0]&HRES[1]} <= 10'h380 &&
-	               WSCRNY                 >= {WxSY[1][8:1],WxSY[1][0]&~DDI}                                                      && WSCRNY                 <= {WxEY[1][8:1],WxEY[1][0]&~DDI}    && WxEY[1][8:0] < 9'h1FC;
+	wire W0_HIT = ({SCRNX,SCRNX0&HRES[1]} >= {WxSX[0][9:1],WxSX[0][0]&HRES[1]} || WxSX[0][9:0] >= 10'h360) && {SCRNX,SCRNX0&HRES[1]} <= {WxEX[0][9:1],WxEX[0][0]&HRES[1]} && {WxEX[0][9:1],WxEX[0][0]&HRES[1]} < 10'h360 && {WxEX[0][9:1],WxEX[0][0]&HRES[1]} != 10'h2EC &&
+	             (((WSCRNY                >= {WxSY[0][8:1],WxSY[0][0]&~DDI}                              ) && WSCRNY                 <= {WxEY[0][8:1],WxEY[0][0]&~DDI}    && WxSY[0][8:0] != 9'h1FE && WxEY[0][8:0] < 9'h1FE) || (WxEY[0][8:0] >= 9'h0F0 && WxEY[0][8:0] <= 9'h1ED && !DDI));
+	wire W1_HIT = ({SCRNX,SCRNX0&HRES[1]} >= {WxSX[1][9:1],WxSX[1][0]&HRES[1]} || WxSX[1][9:0] >= 10'h360) && {SCRNX,SCRNX0&HRES[1]} <= {WxEX[1][9:1],WxEX[1][0]&HRES[1]} && {WxEX[1][9:1],WxEX[1][0]&HRES[1]} < 10'h360 && {WxEX[1][9:1],WxEX[1][0]&HRES[1]} != 10'h2EC &&
+	             (((WSCRNY                >= {WxSY[1][8:1],WxSY[1][0]&~DDI}                              ) && WSCRNY                 <= {WxEY[1][8:1],WxEY[1][0]&~DDI}    && WxSY[1][8:0] != 9'h1FE && WxEY[1][8:0] < 9'h1FE) || (WxEY[1][8:0] >= 9'h0F0 && WxEY[1][8:0] <= 9'h1ED && !DDI));
 					  
 	bit          W0_HIT_PIPE[17*2];
 	bit          W1_HIT_PIPE[17*2];
@@ -2219,6 +2233,7 @@ module VDP2 (
 		bit [ 6: 0] NPALN[8];
 		bit [31: 0] NCH[4];
 		bit [ 2: 0] NCHCN[4];
+		bit         NCHEN[4];
 		bit         NEN[4];
 		bit [ 2: 0] RCNT[2];
 		bit         RHF[2];
@@ -2338,7 +2353,8 @@ module VDP2 (
 					NCC[3] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[7] = !NSxREG[0].BMEN ? PN_PIPE[4][7].CC : NSxREG[0].BMCC;
 					NCH[3] = NBG_CH[0];
 					NCHCN[3] = NSxREG[0].CHCN;
-					NEN[3] = BG_PIPE[2].NxCH_EN[0];
+					NCHEN[3] = BG_PIPE[2].NxCH_EN[0];
+					NEN[3] = BG_PIPE[3].NxCH[0];
 				end else if (BG_PIPE[3].NxCH[1] && NSxREG[1].CHCN[1]) begin
 					NCNT[3] = BG_PIPE[3].NxCH_CNT[1];
 					NPALN[3] = !NSxREG[1].BMEN ? PN_PIPE[4][1].PALN : {NSxREG[1].BMP,4'b0000}; NPALN[7] = !NSxREG[1].BMEN ? PN_PIPE[4][7].PALN : {NSxREG[1].BMP,4'b0000};
@@ -2347,7 +2363,8 @@ module VDP2 (
 					NCC[3] = !NSxREG[1].BMEN ? PN_PIPE[4][1].CC : NSxREG[1].BMCC;              NCC[7] = !NSxREG[1].BMEN ? PN_PIPE[4][7].CC : NSxREG[1].BMCC;
 					NCH[3] = NBG_CH[1];
 					NCHCN[3] = {1'b0,NSxREG[1].CHCN[1:0]};
-					NEN[3] = BG_PIPE[2].NxCH_EN[1];
+					NCHEN[3] = BG_PIPE[2].NxCH_EN[1];
+					NEN[3] = BG_PIPE[3].NxCH[1];
 				end else if (BG_PIPE[3].NxCH[1] && ((NSxREG[1].CHCN == 3'b000 && NSxREG[1].ZMQT) || 
 																(NSxREG[1].CHCN == 3'b001 && NSxREG[1].ZMHF))) begin
 					NCNT[3] = BG_PIPE[3].NxCH_CNT[1];
@@ -2357,7 +2374,8 @@ module VDP2 (
 					NCC[3] = !NSxREG[1].BMEN ? PN_PIPE[4][5].CC : NSxREG[1].BMCC;              NCC[7] = !NSxREG[1].BMEN ? PN_PIPE[4][7].CC : NSxREG[1].BMCC;
 					NCH[3] = NBG_CH[1];
 					NCHCN[3] = {2'b00,NSxREG[1].CHCN[0]};
-					NEN[3] = BG_PIPE[3].NxCH[1] & BG_PIPE[2].NxCH_EN[1];
+					NCHEN[3] = BG_PIPE[2].NxCH_EN[1];
+					NEN[3] = BG_PIPE[3].NxCH[1];
 				end else begin
 					NCNT[3] = BG_PIPE[3].NxCH_CNT[3];
 					NPALN[3] = !NSxREG[3].BMEN ? PN_PIPE[4][3].PALN : {NSxREG[3].BMP,4'b0000}; NPALN[7] = !NSxREG[3].BMEN ? PN_PIPE[4][7].PALN : {NSxREG[3].BMP,4'b0000};
@@ -2366,9 +2384,10 @@ module VDP2 (
 					NCC[3] = !NSxREG[3].BMEN ? PN_PIPE[4][3].CC : NSxREG[3].BMCC;              NCC[7] = !NSxREG[3].BMEN ? PN_PIPE[4][7].CC : NSxREG[3].BMCC;
 					NCH[3] = NBG_CH[3];
 					NCHCN[3] = {2'b00,NSxREG[3].CHCN[0]};
-					NEN[3] = BG_PIPE[3].NxCH[3] & BG_PIPE[2].NxCH_EN[3];
+					NCHEN[3] = BG_PIPE[2].NxCH_EN[3];
+					NEN[3] = BG_PIPE[3].NxCH[3];
 				end
-				if (NEN[3]) begin
+				if (NEN[3] && NCHEN[3]) begin
 					case (NCHCN[3])
 						3'b000: begin				//4bits/dot, 16 colors
 							if (!NCNT[3][2] && NCNT[3][0] == 2'b11 && NSxREG[1].ZMQT && NSxREG[1].ON) begin
@@ -2380,7 +2399,6 @@ module VDP2 (
 							NBG_CDC[3][3'b101               ^ {3{NHF[7]}}][ 7: 4] <= NCH[3][11: 8];
 							NBG_CDC[3][3'b110               ^ {3{NHF[7]}}][ 7: 4] <= NCH[3][ 7: 4];
 							NBG_CDC[3][3'b111               ^ {3{NHF[7]}}][ 7: 4] <= NCH[3][ 3: 0];
-							NBG_CDP[7] <= {NPR[7], NCC[7], NPALN[7], 1'b0};
 							end else if (!NCNT[3][2] && ((NCNT[3][1:0] == 2'b00 && !(NSxREG[1].ZMQT && NSxREG[1].ON)) || (NCNT[3][1:0] == 2'b10 && NSxREG[1].ZMQT && NSxREG[1].ON))) begin
 							NBG_CDC[3][3'b000               ^ {3{NHF[3]}}][ 3: 0] <= NCH[3][31:28];
 							NBG_CDC[3][3'b001               ^ {3{NHF[3]}}][ 3: 0] <= NCH[3][27:24];
@@ -2390,7 +2408,6 @@ module VDP2 (
 							NBG_CDC[3][3'b101               ^ {3{NHF[3]}}][ 3: 0] <= NCH[3][11: 8];
 							NBG_CDC[3][3'b110               ^ {3{NHF[3]}}][ 3: 0] <= NCH[3][ 7: 4];
 							NBG_CDC[3][3'b111               ^ {3{NHF[3]}}][ 3: 0] <= NCH[3][ 3: 0];
-							NBG_CDP[3] <= {NPR[3], NCC[3], NPALN[3], 1'b0};
 							end
 						end
 						3'b001: begin				//8bits/dot, 256 colors
@@ -2399,7 +2416,6 @@ module VDP2 (
 							NBG_CDC[3][{NCNT[3][0:0],2'b01 ^ {2{NHF[3]}}}] <= {     NCH[3][23:16]};
 							NBG_CDC[3][{NCNT[3][0:0],2'b10 ^ {2{NHF[3]}}}] <= {     NCH[3][15: 8]};
 							NBG_CDC[3][{NCNT[3][0:0],2'b11 ^ {2{NHF[3]}}}] <= {     NCH[3][ 7: 0]};
-							NBG_CDP[3] <= {NPR[3], NCC[3], NPALN[3], 1'b0};
 							end
 						end
 						3'b010,3'b011: begin				//16bits/dot, 2048 colors
@@ -2414,7 +2430,30 @@ module VDP2 (
 						default:;
 					endcase
 				end
-					
+				if (NEN[3]) begin
+					case (NCHCN[3])
+						3'b000: begin				//4bits/dot, 16 colors
+							if (!NCNT[3][2] && NCNT[3][0] == 2'b11 && NSxREG[1].ZMQT && NSxREG[1].ON) begin
+							NBG_CDP[7] <= {NPR[7], NCC[7], NPALN[7], 1'b0};
+							end else if (!NCNT[3][2] && ((NCNT[3][1:0] == 2'b00 && !(NSxREG[1].ZMQT && NSxREG[1].ON)) || (NCNT[3][1:0] == 2'b10 && NSxREG[1].ZMQT && NSxREG[1].ON))) begin
+							NBG_CDP[3] <= {NPR[3], NCC[3], NPALN[3], 1'b0};
+							end
+						end
+						3'b001: begin				//8bits/dot, 256 colors
+							if (!NCNT[3][2] && ((NCNT[3][1] == 1'b0 && !(NSxREG[1].CHCN == 3'b001 && NSxREG[1].ZMHF && NSxREG[1].ON)) || (NCNT[3][1] == 1'b1 && NSxREG[1].ZMHF && NSxREG[1].ON))) begin
+							NBG_CDP[3] <= {NPR[3], NCC[3], NPALN[3], 1'b0};
+							end
+						end
+						3'b010,3'b011: begin				//16bits/dot, 2048 colors
+							
+						end
+						3'b100: begin				//32bits/dot, 16M colors
+							
+						end
+						default:;
+					endcase
+				end
+				
 				NEN[2] = 0;
 				if (BG_PIPE[3].NxCH[0] && NSxREG[0].CHCN[2:1]) begin
 					NCNT[2] = BG_PIPE[3].NxCH_CNT[0];
@@ -2424,7 +2463,8 @@ module VDP2 (
 					NCC[2] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[6] = !NSxREG[0].BMEN ? PN_PIPE[4][6].CC : NSxREG[0].BMCC;
 					NCH[2] = NBG_CH[0];
 					NCHCN[2] = NSxREG[0].CHCN;
-					NEN[2] = BG_PIPE[3].NxCH[0] & BG_PIPE[2].NxCH_EN[0];
+					NCHEN[2] = BG_PIPE[2].NxCH_EN[0];
+					NEN[2] = BG_PIPE[3].NxCH[0];
 				end else if (BG_PIPE[3].NxCH[0] && ((NSxREG[0].CHCN == 3'b000 && NSxREG[0].ZMQT) || 
 																(NSxREG[0].CHCN == 3'b001 && NSxREG[0].ZMHF))) begin
 					NCNT[2] = BG_PIPE[3].NxCH_CNT[0];
@@ -2434,7 +2474,8 @@ module VDP2 (
 					NCC[2] = !NSxREG[0].BMEN ? PN_PIPE[4][4].CC : NSxREG[0].BMCC;              NCC[6] = !NSxREG[0].BMEN ? PN_PIPE[4][6].CC : NSxREG[0].BMCC;
 					NCH[2] = NBG_CH[0];
 					NCHCN[2] = NSxREG[0].CHCN;
-					NEN[2] = BG_PIPE[3].NxCH[0] & BG_PIPE[2].NxCH_EN[0];
+					NCHEN[2] = BG_PIPE[2].NxCH_EN[0];
+					NEN[2] = BG_PIPE[3].NxCH[0];
 				end else begin
 					NCNT[2] = BG_PIPE[3].NxCH_CNT[2];
 					NPALN[2] = !NSxREG[2].BMEN ? PN_PIPE[4][2].PALN : {NSxREG[2].BMP,4'b0000}; NPALN[6] = !NSxREG[2].BMEN ? PN_PIPE[4][2].PALN : {NSxREG[2].BMP,4'b0000};
@@ -2443,9 +2484,10 @@ module VDP2 (
 					NCC[2] = !NSxREG[2].BMEN ? PN_PIPE[4][2].CC : NSxREG[2].BMCC;              NCC[6] = !NSxREG[2].BMEN ? PN_PIPE[4][2].CC : NSxREG[2].BMCC;
 					NCH[2] = NBG_CH[2];
 					NCHCN[2] = {2'b00,NSxREG[2].CHCN[0]};
-					NEN[2] = BG_PIPE[3].NxCH[2] & BG_PIPE[2].NxCH_EN[2];
+					NCHEN[2] = BG_PIPE[2].NxCH_EN[2];
+					NEN[2] = BG_PIPE[3].NxCH[2];
 				end
-				if (NEN[2]) begin
+				if (NEN[2] && NCHEN[2]) begin
 					case (NCHCN[2])
 						3'b000: begin				//4bits/dot, 16 colors
 							if (!NCNT[2][2] && NCNT[2][1:0] == 2'b11 && NSxREG[0].ZMQT && NSxREG[0].ON) begin
@@ -2457,7 +2499,6 @@ module VDP2 (
 							NBG_CDC[2][3'b101               ^ {3{NHF[6]}}][ 7: 4] <= NCH[2][11: 8];
 							NBG_CDC[2][3'b110               ^ {3{NHF[6]}}][ 7: 4] <= NCH[2][ 7: 4];
 							NBG_CDC[2][3'b111               ^ {3{NHF[6]}}][ 7: 4] <= NCH[2][ 3: 0];
-							NBG_CDP[6] <= {NPR[6], NCC[6], NPALN[6], 1'b0};
 							end else if (!NCNT[2][2] && ((NCNT[2][1:0] == 2'b00 && !(NSxREG[0].ZMQT && NSxREG[0].ON)) || (NCNT[2][1:0] == 2'b10 && NSxREG[0].ZMQT && NSxREG[0].ON))) begin
 							NBG_CDC[2][3'b000               ^ {3{NHF[2]}}][ 3: 0] <= NCH[2][31:28];
 							NBG_CDC[2][3'b001               ^ {3{NHF[2]}}][ 3: 0] <= NCH[2][27:24];
@@ -2467,7 +2508,6 @@ module VDP2 (
 							NBG_CDC[2][3'b101               ^ {3{NHF[2]}}][ 3: 0] <= NCH[2][11: 8];
 							NBG_CDC[2][3'b110               ^ {3{NHF[2]}}][ 3: 0] <= NCH[2][ 7: 4];
 							NBG_CDC[2][3'b111               ^ {3{NHF[2]}}][ 3: 0] <= NCH[2][ 3: 0];
-							NBG_CDP[2] <= {NPR[2], NCC[2], NPALN[2], 1'b0};
 							end
 						end
 						3'b001: begin				//8bits/dot, 256 colors
@@ -2476,7 +2516,6 @@ module VDP2 (
 							NBG_CDC[2][{NCNT[2][0:0],2'b01 ^ {2{NHF[2]}}}] <= {     NCH[2][23:16]};
 							NBG_CDC[2][{NCNT[2][0:0],2'b10 ^ {2{NHF[2]}}}] <= {     NCH[2][15: 8]};
 							NBG_CDC[2][{NCNT[2][0:0],2'b11 ^ {2{NHF[2]}}}] <= {     NCH[2][ 7: 0]};
-							NBG_CDP[2] <= {NPR[2], NCC[2], NPALN[2], 1'b0};
 							end
 						end
 						3'b010,3'b011: begin				//16bits/dot, 2048 colors (NBG0)
@@ -2491,6 +2530,29 @@ module VDP2 (
 						default:;
 					endcase
 				end
+				if (NEN[2]) begin
+					case (NCHCN[2])
+						3'b000: begin				//4bits/dot, 16 colors
+							if (!NCNT[2][2] && NCNT[2][1:0] == 2'b11 && NSxREG[0].ZMQT && NSxREG[0].ON) begin
+							NBG_CDP[6] <= {NPR[6], NCC[6], NPALN[6], 1'b0};
+							end else if (!NCNT[2][2] && ((NCNT[2][1:0] == 2'b00 && !(NSxREG[0].ZMQT && NSxREG[0].ON)) || (NCNT[2][1:0] == 2'b10 && NSxREG[0].ZMQT && NSxREG[0].ON))) begin
+							NBG_CDP[2] <= {NPR[2], NCC[2], NPALN[2], 1'b0};
+							end
+						end
+						3'b001: begin				//8bits/dot, 256 colors
+							if (!NCNT[2][2] && ((NCNT[2][1] == 1'b0 && !(NSxREG[0].CHCN == 3'b001 && NSxREG[0].ZMHF && NSxREG[0].ON)) || (NCNT[2][1] == 1'b1 && NSxREG[0].ZMHF && NSxREG[0].ON))) begin
+							NBG_CDP[2] <= {NPR[2], NCC[2], NPALN[2], 1'b0};
+							end
+						end
+						3'b010,3'b011: begin				//16bits/dot, 2048 colors (NBG0)
+							
+						end
+						3'b100: begin				//32bits/dot, 16M colors (NBG0)
+							 
+						end
+						default:;
+					endcase
+				end
 				
 				NEN[1] = 0;
 				if (BG_PIPE[3].NxCH[0] && NSxREG[0].CHCN[2]) begin
@@ -2501,7 +2563,8 @@ module VDP2 (
 					NCC[1] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[5] = !NSxREG[0].BMEN ? PN_PIPE[4][5].CC : NSxREG[0].BMCC;
 					NCH[1] = NBG_CH[0];
 					NCHCN[1] = NSxREG[0].CHCN;
-					NEN[1] = BG_PIPE[2].NxCH_EN[0];
+					NCHEN[1] = BG_PIPE[2].NxCH_EN[0];
+					NEN[1] = BG_PIPE[3].NxCH[0];
 				end else if (BG_PIPE[3].NxCH[1] && NSxREG[1].CHCN == 3'b000 && (NSxREG[1].ZMHF || NSxREG[1].ZMQT)) begin
 					NCNT[1] = BG_PIPE[3].NxCH_CNT[1];
 					NPALN[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].PALN : {NSxREG[1].BMP,4'b0000}; NPALN[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].PALN : {NSxREG[1].BMP,4'b0000};
@@ -2510,7 +2573,8 @@ module VDP2 (
 					NCC[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].CC : NSxREG[1].BMCC;              NCC[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].CC : NSxREG[1].BMCC;
 					NCH[1] = NBG_CH[1];
 					NCHCN[1] = NSxREG[1].CHCN;
-					NEN[1] = BG_PIPE[3].NxCH[1] & (!BG_PIPE[3].NxCH_CNT[1][1] | (NSxREG[1].ZMHF & ~NSxREG[1].ZMQT)) & BG_PIPE[2].NxCH_EN[1];
+					NCHEN[1] = BG_PIPE[2].NxCH_EN[1];
+					NEN[1] = BG_PIPE[3].NxCH[1] & (!BG_PIPE[3].NxCH_CNT[1][1] | (NSxREG[1].ZMHF & ~NSxREG[1].ZMQT));
 				end else if (BG_PIPE[3].NxCH[1] && NSxREG[1].CHCN == 3'b001 && NSxREG[1].ZMHF) begin
 					NCNT[1] = BG_PIPE[3].NxCH_CNT[1];
 					NPALN[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].PALN : {NSxREG[1].BMP,4'b0000}; NPALN[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].PALN : {NSxREG[1].BMP,4'b0000};
@@ -2519,7 +2583,8 @@ module VDP2 (
 					NCC[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].CC : NSxREG[1].BMCC;              NCC[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].CC : NSxREG[1].BMCC;
 					NCH[1] = NBG_CH[1];
 					NCHCN[1] = NSxREG[1].CHCN;
-					NEN[1] = BG_PIPE[3].NxCH[1] & BG_PIPE[2].NxCH_EN[1];
+					NCHEN[1] = BG_PIPE[2].NxCH_EN[1];
+					NEN[1] = BG_PIPE[3].NxCH[1];
 				end else begin
 					NCNT[1] = BG_PIPE[3].NxCH_CNT[1];
 					NPALN[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].PALN : {NSxREG[1].BMP,4'b0000}; NPALN[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].PALN : {NSxREG[1].BMP,4'b0000};
@@ -2528,9 +2593,10 @@ module VDP2 (
 					NCC[1] = !NSxREG[1].BMEN ? PN_PIPE[4][1].CC : NSxREG[1].BMCC;              NCC[5] = !NSxREG[1].BMEN ? PN_PIPE[4][5].CC : NSxREG[1].BMCC;
 					NCH[1] = NBG_CH[1];
 					NCHCN[1] = {1'b0,NSxREG[1].CHCN[1:0]};
-					NEN[1] = BG_PIPE[3].NxCH[1] & BG_PIPE[2].NxCH_EN[1];
+					NCHEN[1] = BG_PIPE[2].NxCH_EN[1];
+					NEN[1] = BG_PIPE[3].NxCH[1];
 				end
-				if (NEN[1]) begin
+				if (NEN[1] && NCHEN[1]) begin
 					case (NCHCN[1])
 						3'b000: begin				//4bits/dot, 16 colors
 							if (NCNT[1][0] && (NSxREG[1].ZMHF || NSxREG[1].ZMQT) && NSxREG[1].ON) begin
@@ -2542,7 +2608,6 @@ module VDP2 (
 							NBG_CDC[1][3'b101               ^ {3{NHF[5]}}][ 7: 4] <= NCH[1][11: 8];
 							NBG_CDC[1][3'b110               ^ {3{NHF[5]}}][ 7: 4] <= NCH[1][ 7: 4];
 							NBG_CDC[1][3'b111               ^ {3{NHF[5]}}][ 7: 4] <= NCH[1][ 3: 0];
-							NBG_CDP[5] <= {NPR[5], NCC[5], NPALN[5], 1'b0};
 							end else if (!NCNT[1][2:0]) begin
 							NBG_CDC[1][3'b000               ^ {3{NHF[1]}}][ 3: 0] <= NCH[1][31:28];
 							NBG_CDC[1][3'b001               ^ {3{NHF[1]}}][ 3: 0] <= NCH[1][27:24];
@@ -2552,7 +2617,6 @@ module VDP2 (
 							NBG_CDC[1][3'b101               ^ {3{NHF[1]}}][ 3: 0] <= NCH[1][11: 8];
 							NBG_CDC[1][3'b110               ^ {3{NHF[1]}}][ 3: 0] <= NCH[1][ 7: 4];
 							NBG_CDC[1][3'b111               ^ {3{NHF[1]}}][ 3: 0] <= NCH[1][ 3: 0];
-							NBG_CDP[1] <= {NPR[1], NCC[1], NPALN[1], 1'b0};
 							end
 						end
 						3'b001: begin				//8bits/dot, 256 colors
@@ -2561,18 +2625,41 @@ module VDP2 (
 							NBG_CDC[1][{NCNT[1][0:0],2'b01 ^ {2{NHF[1]}}}] <= {     NCH[1][23:16]};
 							NBG_CDC[1][{NCNT[1][0:0],2'b10 ^ {2{NHF[1]}}}] <= {     NCH[1][15: 8]};
 							NBG_CDC[1][{NCNT[1][0:0],2'b11 ^ {2{NHF[1]}}}] <= {     NCH[1][ 7: 0]};
-							NBG_CDP[1] <= {NPR[1], NCC[1], NPALN[1], 1'b0};
 							end
 						end
 						3'b010,3'b011: begin				//16bits/dot, 2048 colors
 							if (!NCNT[1][2]) begin
 							NBG_CDC[1][{NCNT[1][1:0], 1'b0 ^ {1{NHF[1]}}}] <= {     NCH[1][23:16]};
 							NBG_CDC[1][{NCNT[1][1:0], 1'b1 ^ {1{NHF[1]}}}] <= {     NCH[1][ 7: 0]};
-							NBG_CDP[1] <= {NPR[1], NCC[1], NPALN[1], 1'b0};
 							end
 						end
 						3'b100: begin				//32bits/dot, 16M colors
 							NBG_CDC[1][{NCNT[1][2:0]                    }] <= {     NCH[1][23:16]}; 
+						end
+						default:;
+					endcase
+				end
+				if (NEN[1]) begin
+					case (NCHCN[1])
+						3'b000: begin				//4bits/dot, 16 colors
+							if (NCNT[1][0] && (NSxREG[1].ZMHF || NSxREG[1].ZMQT) && NSxREG[1].ON) begin
+							NBG_CDP[5] <= {NPR[5], NCC[5], NPALN[5], 1'b0};
+							end else if (!NCNT[1][2:0]) begin
+							NBG_CDP[1] <= {NPR[1], NCC[1], NPALN[1], 1'b0};
+							end
+						end
+						3'b001: begin				//8bits/dot, 256 colors
+							if (!NCNT[1][2] && !NCNT[1][1]) begin
+							NBG_CDP[1] <= {NPR[1], NCC[1], NPALN[1], 1'b0};
+							end
+						end
+						3'b010,3'b011: begin				//16bits/dot, 2048 colors
+							if (!NCNT[1][2]) begin
+							NBG_CDP[1] <= {NPR[1], NCC[1], NPALN[1], 1'b0};
+							end
+						end
+						3'b100: begin				//32bits/dot, 16M colors
+							
 						end
 						default:;
 					endcase
@@ -2587,7 +2674,8 @@ module VDP2 (
 					NCC[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].CC : NSxREG[0].BMCC;
 					NCH[0] = NBG_CH[0];
 					NCHCN[0] = NSxREG[0].CHCN;
-					NEN[0] = BG_PIPE[3].NxCH[0] & (!BG_PIPE[3].NxCH_CNT[0][1] | (NSxREG[0].ZMHF & ~NSxREG[0].ZMQT)) & BG_PIPE[2].NxCH_EN[0];
+					NCHEN[0] = BG_PIPE[2].NxCH_EN[0];
+					NEN[0] = BG_PIPE[3].NxCH[0] & (!BG_PIPE[3].NxCH_CNT[0][1] | (NSxREG[0].ZMHF & ~NSxREG[0].ZMQT));
 				end else if (BG_PIPE[3].NxCH[0] && NSxREG[0].CHCN == 3'b001 && NSxREG[0].ZMHF) begin
 					NCNT[0] = BG_PIPE[3].NxCH_CNT[0];
 					NPALN[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].PALN : {NSxREG[0].BMP,4'b0000}; NPALN[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].PALN : {NSxREG[0].BMP,4'b0000};
@@ -2596,7 +2684,8 @@ module VDP2 (
 					NCC[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].CC : NSxREG[0].BMCC;
 					NCH[0] = BG_PIPE[2].NxCH_EN[0] ? NBG_CH[0] : '0;
 					NCHCN[0] = NSxREG[0].CHCN;
-					NEN[0] = BG_PIPE[3].NxCH[0] & !BG_PIPE[3].NxCH_CNT[0][1] & BG_PIPE[2].NxCH_EN[0];
+					NCHEN[0] = BG_PIPE[2].NxCH_EN[0];
+					NEN[0] = BG_PIPE[3].NxCH[0] & !BG_PIPE[3].NxCH_CNT[0][1];
 				end else begin
 					NCNT[0] = BG_PIPE[3].NxCH_CNT[0];
 					NPALN[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].PALN : {NSxREG[0].BMP,4'b0000}; NPALN[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].PALN : {NSxREG[0].BMP,4'b0000};
@@ -2605,9 +2694,10 @@ module VDP2 (
 					NCC[0] = !NSxREG[0].BMEN ? PN_PIPE[4][0].CC : NSxREG[0].BMCC;              NCC[4] = !NSxREG[0].BMEN ? PN_PIPE[4][4].CC : NSxREG[0].BMCC;
 					NCH[0] = BG_PIPE[2].NxCH_EN[0] ? NBG_CH[0] : '0;
 					NCHCN[0] = NSxREG[0].CHCN;
-					NEN[0] = BG_PIPE[3].NxCH[0] & BG_PIPE[2].NxCH_EN[0];
+					NCHEN[0] = BG_PIPE[2].NxCH_EN[0];
+					NEN[0] = BG_PIPE[3].NxCH[0];
 				end
-				if (NEN[0]) begin
+				if (NEN[0] && NCHEN[0]) begin
 					case (NCHCN[0])
 						3'b000: begin				//4bits/dot, 16 colors
 							if (NCNT[0][0] && (NSxREG[0].ZMHF || NSxREG[0].ZMQT) && NSxREG[0].ON) begin
@@ -2619,7 +2709,6 @@ module VDP2 (
 							NBG_CDC[0][3'b101               ^ {3{NHF[4]}}][ 7: 4] <= NCH[0][11: 8];
 							NBG_CDC[0][3'b110               ^ {3{NHF[4]}}][ 7: 4] <= NCH[0][ 7: 4];
 							NBG_CDC[0][3'b111               ^ {3{NHF[4]}}][ 7: 4] <= NCH[0][ 3: 0];
-							NBG_CDP[4] <= {NPR[4], NCC[4], NPALN[4], 1'b0};
 							end else if (!NCNT[0][2:0]) begin
 							NBG_CDC[0][3'b000               ^ {3{NHF[0]}}][ 3: 0] <= NCH[0][31:28];
 							NBG_CDC[0][3'b001               ^ {3{NHF[0]}}][ 3: 0] <= NCH[0][27:24];
@@ -2629,7 +2718,6 @@ module VDP2 (
 							NBG_CDC[0][3'b101               ^ {3{NHF[0]}}][ 3: 0] <= NCH[0][11: 8];
 							NBG_CDC[0][3'b110               ^ {3{NHF[0]}}][ 3: 0] <= NCH[0][ 7: 4];
 							NBG_CDC[0][3'b111               ^ {3{NHF[0]}}][ 3: 0] <= NCH[0][ 3: 0];
-							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
 							end
 						end
 						3'b001: begin				//8bits/dot, 256 colors
@@ -2638,18 +2726,40 @@ module VDP2 (
 							NBG_CDC[0][{NCNT[0][0:0],2'b01 ^ {2{NHF[0]}}}] <= {     NCH[0][23:16]};
 							NBG_CDC[0][{NCNT[0][0:0],2'b10 ^ {2{NHF[0]}}}] <= {     NCH[0][15: 8]};
 							NBG_CDC[0][{NCNT[0][0:0],2'b11 ^ {2{NHF[0]}}}] <= {     NCH[0][ 7: 0]};
-							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
 							end
 						end
 						3'b010,3'b011: begin				//16bits/dot, 2048 colors
 							if (!NCNT[0][2]) begin
 							NBG_CDC[0][{NCNT[0][1:0], 1'b0 ^ {1{NHF[0]}}}] <= {     NCH[0][23:16]};
 							NBG_CDC[0][{NCNT[0][1:0], 1'b1 ^ {1{NHF[0]}}}] <= {     NCH[0][ 7: 0]};
-							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
 							end
 						end
 						3'b100: begin				//32bits/dot, 16M colors
 							NBG_CDC[0][{NCNT[0][2:0]                    }] <= {     NCH[0][ 7: 0]};
+						end
+						default:;
+					endcase
+				end
+				if (NEN[0]) begin
+					case (NCHCN[0])
+						3'b000: begin				//4bits/dot, 16 colors
+							if (NCNT[0][0] && (NSxREG[0].ZMHF || NSxREG[0].ZMQT) && NSxREG[0].ON) begin
+							NBG_CDP[4] <= {NPR[4], NCC[4], NPALN[4], 1'b0};
+							end else if (!NCNT[0][2:0]) begin
+							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
+							end
+						end
+						3'b001: begin				//8bits/dot, 256 colors
+							if (!NCNT[0][2] && !NCNT[0][1]) begin
+							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
+							end
+						end
+						3'b010,3'b011: begin				//16bits/dot, 2048 colors
+							if (!NCNT[0][2]) begin
+							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
+							end
+						end
+						3'b100: begin				//32bits/dot, 16M colors
 							NBG_CDP[0] <= {NPR[0], NCC[0], NPALN[0], 1'b0};
 						end
 						default:;
@@ -2717,6 +2827,7 @@ module VDP2 (
 									        VA_PIPE[0].RxB0CH[i] && RxCH_ADDR[RBG_B0VA.Rx][18:17] == 2'b10 ? 2'd2 : 
 									        2'd3;
 				RBG_PIPE[0].RxCELLX[i] = VA_PIPE[4].RxX[CH_RP][2:0];
+				RBG_PIPE[0].RxCT_EN[i] = RBG_CT_EN[i];
 				
 				if (RBG_PIPE[2].RxPN[i]) begin
 					case (RBG_PIPE[2].RxPNS[i])
@@ -3036,6 +3147,7 @@ module VDP2 (
 		bit         SCOEN, R0COEN, N0COEN, N1COEN, N2COEN, N3COEN, BKCOEN;
 		bit         SCOSL, R0COSL, N0COSL, N1COSL, N2COSL, N3COSL, BKCOSL;
 		bit         SSDEN, R0SDEN, N0SDEN, N1SDEN, N2SDEN, N3SDEN, BKSDEN;
+		bit         SBOKEN, R0BOKEN, N0BOKEN, N1BOKEN, N2BOKEN, N3BOKEN;
 		bit         SLCEN, R0LCEN, N0LCEN, N1LCEN, N2LCEN, N3LCEN;
 		ScreenDot_t FST, SEC, THD, FTH;
 		bit   [2:0] FST_PRI, SEC_PRI, THD_PRI, FTH_PRI;
@@ -3137,6 +3249,13 @@ module VDP2 (
 			N2SDEN = REGS.SDCTL.N2SDEN & SDOT.SD & SPRIN >= N2PRIN & SCRN_EN[7];
 			N3SDEN = REGS.SDCTL.N3SDEN & SDOT.SD & SPRIN >= N3PRIN & SCRN_EN[7];
 			
+			SBOKEN  = (REGS.CCCTL.BOKN == 3'h0) & REGS.CCCTL.BOKEN;
+			R0BOKEN = (REGS.CCCTL.BOKN == 3'h1) & REGS.CCCTL.BOKEN;
+			N0BOKEN = (REGS.CCCTL.BOKN == 3'h2) & REGS.CCCTL.BOKEN;
+			N1BOKEN = (REGS.CCCTL.BOKN == 3'h4) & REGS.CCCTL.BOKEN;
+			N2BOKEN = (REGS.CCCTL.BOKN == 3'h5) & REGS.CCCTL.BOKEN;
+			N3BOKEN = (REGS.CCCTL.BOKN == 3'h6) & REGS.CCCTL.BOKEN;
+			
 			SLCEN = REGS.LNCLEN.SPLCEN;
 			R0LCEN = REGS.LNCLEN.R0LCEN;
 			N0LCEN = REGS.LNCLEN.N0LCEN;
@@ -3144,14 +3263,14 @@ module VDP2 (
 			N2LCEN = REGS.LNCLEN.N2LCEN;
 			N3LCEN = REGS.LNCLEN.N3LCEN;
 			
-			FST = {3'b000,1'b0,1'b0,BKCCRT,BKCOEN,BKCOSL,BKSDEN,1'b0,1'b0,BACK_DC}; FST_PRI = 3'd0;
-			SEC = {3'b000,1'b0,1'b0,BKCCRT,BKCOEN,BKCOSL,BKSDEN,1'b0,1'b0,BACK_DC}; SEC_PRI = 3'd0;
-			THD = {3'b000,1'b0,1'b0,BKCCRT,BKCOEN,BKCOSL,BKSDEN,1'b0,1'b0,BACK_DC}; THD_PRI = 3'd0;
+			FST = {3'b000,1'b0,1'b0,BKCCRT,BKCOEN,BKCOSL,BKSDEN,1'b0,1'b0,1'b0,BACK_DC}; FST_PRI = 3'd0;
+			SEC = {3'b000,1'b0,1'b0,BKCCRT,BKCOEN,BKCOSL,BKSDEN,1'b0,1'b0,1'b0,BACK_DC}; SEC_PRI = 3'd0;
+			THD = {3'b000,1'b0,1'b0,BKCCRT,BKCOEN,BKCOSL,BKSDEN,1'b0,1'b0,1'b0,BACK_DC}; THD_PRI = 3'd0;
 			if (DISP) begin
 				if          (SON  && SPRIN                     ) begin
 					THD = SEC; THD_PRI = SEC_PRI;
 					SEC = FST; SEC_PRI = FST_PRI;
-					FST = {SCAOS,SCCEN,SCCM3,SCCRT,SCOEN,SCOSL,1'b0,SLCEN,SDOT.P,SDOT.DC}; FST_PRI = SPRIN;
+					FST = {SCAOS,SCCEN,SCCM3,SCCRT,SCOEN,SCOSL,1'b0,SBOKEN,SLCEN,SDOT.P,SDOT.DC}; FST_PRI = SPRIN;
 				end
 `ifdef DEBUG
 				FST_PRI5_DBG <= FST_PRI;
@@ -3162,10 +3281,10 @@ module VDP2 (
 				if          (R0ON && R0PRIN && R0PRIN > FST_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
 					SEC = FST; SEC_PRI = FST_PRI;
-					FST = {R0CAOS,R0CCEN,R0CCM3,R0CCRT,R0COEN,R0COSL,R0SDEN,R0LCEN,R0DOT.P,R0DOT.DC}; FST_PRI = R0PRIN;
+					FST = {R0CAOS,R0CCEN,R0CCM3,R0CCRT,R0COEN,R0COSL,R0SDEN,R0BOKEN,R0LCEN,R0DOT.P,R0DOT.DC}; FST_PRI = R0PRIN;
 				end else if (R0ON && R0PRIN && R0PRIN > SEC_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
-					SEC = {R0CAOS,R0CCEN,R0CCM3,R0CCRT,R0COEN,R0COSL,R0SDEN,R0LCEN,R0DOT.P,R0DOT.DC}; SEC_PRI = R0PRIN;
+					SEC = {R0CAOS,R0CCEN,R0CCM3,R0CCRT,R0COEN,R0COSL,R0SDEN,R0BOKEN,R0LCEN,R0DOT.P,R0DOT.DC}; SEC_PRI = R0PRIN;
 				end
 `ifdef DEBUG
 				FST_PRI4_DBG <= FST_PRI;
@@ -3176,12 +3295,12 @@ module VDP2 (
 				if          (N0ON && N0PRIN && N0PRIN > FST_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
 					SEC = FST; SEC_PRI = FST_PRI;
-					FST = {N0CAOS,N0CCEN,N0CCM3,N0CCRT,N0COEN,N0COSL,N0SDEN,N0LCEN,N0DOT.P,N0DOT.DC}; FST_PRI = N0PRIN;
+					FST = {N0CAOS,N0CCEN,N0CCM3,N0CCRT,N0COEN,N0COSL,N0SDEN,N0BOKEN,N0LCEN,N0DOT.P,N0DOT.DC}; FST_PRI = N0PRIN;
 				end else if (N0ON && N0PRIN && N0PRIN > SEC_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
-					SEC = {N0CAOS,N0CCEN,N0CCM3,N0CCRT,N0COEN,N0COSL,N0SDEN,N0LCEN,N0DOT.P,N0DOT.DC}; SEC_PRI = N0PRIN;
+					SEC = {N0CAOS,N0CCEN,N0CCM3,N0CCRT,N0COEN,N0COSL,N0SDEN,N0BOKEN,N0LCEN,N0DOT.P,N0DOT.DC}; SEC_PRI = N0PRIN;
 				end else if (N0ON && N0PRIN && N0PRIN > THD_PRI) begin
-					THD = {N0CAOS,N0CCEN,N0CCM3,N0CCRT,N0COEN,N0COSL,N0SDEN,N0LCEN,N0DOT.P,N0DOT.DC}; THD_PRI = N0PRIN;
+					THD = {N0CAOS,N0CCEN,N0CCM3,N0CCRT,N0COEN,N0COSL,N0SDEN,N0BOKEN,N0LCEN,N0DOT.P,N0DOT.DC}; THD_PRI = N0PRIN;
 				end
 `ifdef DEBUG
 				FST_PRI0_DBG <= FST_PRI;
@@ -3192,12 +3311,12 @@ module VDP2 (
 				if          (N1ON && N1PRIN && N1PRIN > FST_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
 					SEC = FST; SEC_PRI = FST_PRI;
-					FST = {N1CAOS,N1CCEN,N1CCM3,N1CCRT,N1COEN,N1COSL,N1SDEN,N1LCEN,N1DOT.P,N1DOT.DC}; FST_PRI = N1PRIN;
+					FST = {N1CAOS,N1CCEN,N1CCM3,N1CCRT,N1COEN,N1COSL,N1SDEN,N1BOKEN,N1LCEN,N1DOT.P,N1DOT.DC}; FST_PRI = N1PRIN;
 				end else if (N1ON && N1PRIN && N1PRIN > SEC_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
-					SEC = {N1CAOS,N1CCEN,N1CCM3,N1CCRT,N1COEN,N1COSL,N1SDEN,N1LCEN,N1DOT.P,N1DOT.DC}; SEC_PRI = N1PRIN;
+					SEC = {N1CAOS,N1CCEN,N1CCM3,N1CCRT,N1COEN,N1COSL,N1SDEN,N1BOKEN,N1LCEN,N1DOT.P,N1DOT.DC}; SEC_PRI = N1PRIN;
 				end else if (N1ON && N1PRIN && N1PRIN > THD_PRI) begin
-					THD = {N1CAOS,N1CCEN,N1CCM3,N1CCRT,N1COEN,N1COSL,N1SDEN,N1LCEN,N1DOT.P,N1DOT.DC}; THD_PRI = N1PRIN;
+					THD = {N1CAOS,N1CCEN,N1CCM3,N1CCRT,N1COEN,N1COSL,N1SDEN,N1BOKEN,N1LCEN,N1DOT.P,N1DOT.DC}; THD_PRI = N1PRIN;
 				end
 `ifdef DEBUG
 				FST_PRI1_DBG <= FST_PRI;
@@ -3208,12 +3327,12 @@ module VDP2 (
 				if          (N2ON && N2PRIN && N2PRIN > FST_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
 					SEC = FST; SEC_PRI = FST_PRI;
-					FST = {N2CAOS,N2CCEN,N2CCM3,N2CCRT,N2COEN,N2COSL,N2SDEN,N2LCEN,N2DOT.P,N2DOT.DC}; FST_PRI = N2PRIN;
+					FST = {N2CAOS,N2CCEN,N2CCM3,N2CCRT,N2COEN,N2COSL,N2SDEN,N2BOKEN,N2LCEN,N2DOT.P,N2DOT.DC}; FST_PRI = N2PRIN;
 				end else if (N2ON && N2PRIN && N2PRIN > SEC_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
-					SEC = {N2CAOS,N2CCEN,N2CCM3,N2CCRT,N2COEN,N2COSL,N2SDEN,N2LCEN,N2DOT.P,N2DOT.DC}; SEC_PRI = N2PRIN;
+					SEC = {N2CAOS,N2CCEN,N2CCM3,N2CCRT,N2COEN,N2COSL,N2SDEN,N2BOKEN,N2LCEN,N2DOT.P,N2DOT.DC}; SEC_PRI = N2PRIN;
 				end else if (N2ON && N2PRIN && N2PRIN > THD_PRI) begin
-					THD = {N2CAOS,N2CCEN,N2CCM3,N2CCRT,N2COEN,N2COSL,N2SDEN,N2LCEN,N2DOT.P,N2DOT.DC}; THD_PRI = N2PRIN;
+					THD = {N2CAOS,N2CCEN,N2CCM3,N2CCRT,N2COEN,N2COSL,N2SDEN,N2BOKEN,N2LCEN,N2DOT.P,N2DOT.DC}; THD_PRI = N2PRIN;
 				end
 `ifdef DEBUG
 				FST_PRI2_DBG <= FST_PRI;
@@ -3224,12 +3343,12 @@ module VDP2 (
 				if          (N3ON && N3PRIN && N3PRIN > FST_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
 					SEC = FST; SEC_PRI = FST_PRI;
-					FST = {N3CAOS,N3CCEN,N3CCM3,N3CCRT,N3COEN,N3COSL,N3SDEN,N3LCEN,N3DOT.P,N3DOT.DC}; FST_PRI = N3PRIN;
+					FST = {N3CAOS,N3CCEN,N3CCM3,N3CCRT,N3COEN,N3COSL,N3SDEN,N3BOKEN,N3LCEN,N3DOT.P,N3DOT.DC}; FST_PRI = N3PRIN;
 				end else if (N3ON && N3PRIN && N3PRIN > SEC_PRI) begin
 					THD = SEC; THD_PRI = SEC_PRI;
-					SEC = {N3CAOS,N3CCEN,N3CCM3,N3CCRT,N3COEN,N3COSL,N3SDEN,N3LCEN,N3DOT.P,N3DOT.DC}; SEC_PRI = N3PRIN;
+					SEC = {N3CAOS,N3CCEN,N3CCM3,N3CCRT,N3COEN,N3COSL,N3SDEN,N3BOKEN,N3LCEN,N3DOT.P,N3DOT.DC}; SEC_PRI = N3PRIN;
 				end else if (N3ON && N3PRIN && N3PRIN > THD_PRI) begin
-					THD = {N3CAOS,N3CCEN,N3CCM3,N3CCRT,N3COEN,N3COSL,N3SDEN,N3LCEN,N3DOT.P,N3DOT.DC}; THD_PRI = N3PRIN;
+					THD = {N3CAOS,N3CCEN,N3CCM3,N3CCRT,N3COEN,N3COSL,N3SDEN,N3BOKEN,N3LCEN,N3DOT.P,N3DOT.DC}; THD_PRI = N3PRIN;
 				end
 `ifdef DEBUG
 				FST_PRI3_DBG <= FST_PRI;
@@ -3239,14 +3358,22 @@ module VDP2 (
 			end
 			
 			DOT_FST <= FST;
-			if (!FST.LCEN) begin
+			if (FST.BOKEN) begin
+				DOT_SEC <= FST;
+				DOT_THD <= FST;
+				DOT_FTH <= FST;
+			end else if (SEC.BOKEN) begin
+				DOT_SEC <= SEC;
+				DOT_THD <= SEC;
+				DOT_FTH <= SEC;
+			end else if (FST.LCEN) begin
+				DOT_SEC <= {3'b000,LCCCEN,1'b0,LCCCRT,1'b0,1'b0,1'b0,1'b0,1'b0,1'b1,{13'b0000000000000,LINE_PAL}};
+				DOT_THD <= SEC;
+				DOT_FTH <= THD;
+			end else begin
 				DOT_SEC <= SEC;
 				DOT_THD <= THD;
 				DOT_FTH <= '0;
-			end else begin
-				DOT_SEC <= {3'b000,LCCCEN,1'b0,LCCCRT,1'b0,1'b0,1'b0,1'b0,1'b1,{13'b0000000000000,LINE_PAL}};
-				DOT_THD <= SEC;
-				DOT_FTH <= THD;
 			end
 		end
 	end
@@ -3276,10 +3403,13 @@ module VDP2 (
 	bit        COEN;
 	bit        COSL;
 	bit        SDEN;
+	bit        BOKEN;
 	bit        HBLANK2;
 	always @(posedge CLK or negedge RST_N) begin
 		bit [23:0] DC;
 		bit        CC;
+		bit        BOKEN_PREV1,BOKEN_PREV2;
+		DotColor_t CSEC_PREV1, CSEC_PREV2;
 		
 		if (!RST_N) begin
 			// synopsys translate_off
@@ -3320,8 +3450,8 @@ module VDP2 (
 			if (!HRES[1] && DOT_CE_R) begin
 				CFST <= !DOT_FST.P ? DOT_FST.DC : DC_FST_LATCH;
 				CSEC <= !DOT_SEC.P ? DOT_SEC.DC : DC_SEC_LATCH;
-				CTHD <= !DOT_THD.P ? DOT_THD.DC : DC_THD_LATCH;
-				CFTH <= !DOT_FTH.P ? DOT_FTH.DC : DC;
+				CTHD <= BOKEN_PREV1 ? CSEC_PREV1 : !DOT_THD.P ? DOT_THD.DC : DC_THD_LATCH;
+				CFTH <= BOKEN_PREV2 ? CSEC_PREV2 : !DOT_FTH.P ? DOT_FTH.DC : DC;
 				CCRT <= !REGS.CCCTL.CCRTMD ? DOT_FST.CCRT : DOT_SEC.CCRT;
 				CCENFST <= !DOT_FST.CCM3 ? DOT_FST.CCEN : DOT_FST.CCEN & (CC_FST | ~DOT_FST.P);
 				CCENSEC <= DOT_SEC.CCEN;
@@ -3331,6 +3461,10 @@ module VDP2 (
 				COEN <= DOT_FST.COEN; 
 				COSL <= DOT_FST.COSL;
 				SDEN <= DOT_FST.SDEN;
+				BOKEN <= DOT_SEC.BOKEN;
+				
+				CSEC_PREV2 <= CSEC_PREV1; CSEC_PREV1 <= !DOT_SEC.P ? DOT_SEC.DC : DC_SEC_LATCH;
+				BOKEN_PREV2 <= BOKEN_PREV1; BOKEN_PREV1 <= DOT_SEC.BOKEN;
 			end
 			else if (HRES[1] && (DOT_CE_R || DOT_CE_F)) begin
 				CFST <= !DOT_FST.P ? DOT_FST.DC : DC_FST_LATCH;
@@ -3364,6 +3498,8 @@ module VDP2 (
 				SDEN <= 0;
 				COEN <= 0;
 				COSL <= 0;
+				BOKEN_PREV1 <= 0;
+				BOKEN_PREV2 <= 0; 
 			end
 		end
 	end
@@ -3380,7 +3516,7 @@ module VDP2 (
 			// synopsys translate_on
 		end else begin
 			if (DOT_CE_R || DOT_CE_F) begin
-				CSEC2 = ExtColorCalc(CSEC, CCENSEC, CTHD, PTHD, CCENTHD, CFTH, LCEN, REGS.RAMCTL.CRMD, REGS.CCCTL.EXCCEN);
+				CSEC2 = ExtColorCalc(CSEC, CCENSEC, CTHD, PTHD, CCENTHD, CFTH, LCEN, BOKEN, REGS.RAMCTL.CRMD, REGS.CCCTL.EXCCEN);
 				C = ColorCalc(CFST, CSEC2, CCRT, CCENFST, REGS.CCCTL.CCMD);
 				DCOL.B <= Shadow(ColorOffset(C.B, REGS.COAB.COBL, REGS.COBB.COBL, COEN, COSL), SDEN); 
 				DCOL.G <= Shadow(ColorOffset(C.G, REGS.COAG.COGR, REGS.COBG.COGR, COEN, COSL), SDEN); 
