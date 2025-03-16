@@ -392,8 +392,8 @@ module SCU
 		
 		bit  [26:0] DMA_RA_NEW,DMA_WA_NEW,DMA_IA_NEW;
 		bit         DMA_WTN_LESS2;
-		bit         DMA_WTN_LESS4;
-		bit   [2:0] DMA_WTN_OFFS;
+		bit         DMA_WTN_LESS4,DMA_RTN_LESS4;
+		bit   [2:0] DMA_WTN_OFFS,DMA_RTN_OFFS;
 		bit   [2:0] DMA_RTN_DEC;
 		bit   [2:0] DMA_WTN_DEC;
 		bit  [19:0] DMA_RTN_NEXT;
@@ -719,20 +719,26 @@ module SCU
 				DMA_INT_PEND <= '{3{0}};
 			end
 			
-			DMA_RTN_DEC = 3'd4;
+			DMA_RTN_LESS4 = ~|DMA_RTN[19:2];
 			if (DMA_DSP) begin
 				DMA_RTN_DEC = 3'd4;
 			end else if (DMA_READ_A || DMA_READ_B || DMA_READ_C) begin
-				if (DMA_RA[1:0]) begin
-					case (DMA_RA[1:0])
-						2'b00: ;
-						2'b01: DMA_RTN_DEC = 3'd3;
-						2'b10: DMA_RTN_DEC = 3'd2;
-						2'b11: DMA_RTN_DEC = 3'd1;
-					endcase
-				end else if (!DMA_RTN[19:2] && DMA_RTN[1:0]) begin
-					DMA_RTN_DEC = {1'b0,DMA_RTN[1:0]};
+				case (DMA_RA[1:0])
+					2'b00: DMA_RTN_OFFS = 3'd4;
+					2'b01: DMA_RTN_OFFS = 3'd3;
+					2'b10: DMA_RTN_OFFS = 3'd2;
+					2'b11: DMA_RTN_OFFS = 3'd1;
+				endcase
+				DMA_RTN_DEC = DMA_RTN_OFFS;
+				if (DMA_RTN_LESS4) begin
+					if (!DMA_RTN[1:0]) begin
+						DMA_RTN_DEC = 3'd4;
+					end else if (DMA_RTN[1:0] && {1'b0,DMA_RTN[1:0]} < DMA_RTN_OFFS) begin
+						DMA_RTN_DEC = {1'b0,DMA_RTN[1:0]};
+					end
 				end
+			end else begin
+				DMA_RTN_DEC = 3'd0;
 			end
 			DMA_RTN_NEXT = (DMA_RTN - DMA_RTN_DEC) & (DMA_TN_MASK[DMA_CH] | {20{DMD[DMA_CH].MOD}});
 			
@@ -750,7 +756,7 @@ module SCU
 				DMA_WTN_DEC = DMA_WTN_OFFS;
 				if (DMA_WTN_LESS4) begin
 					if (!DMA_WTN[1:0]) begin
-						DMA_WTN_DEC = 3'd0;
+						DMA_WTN_DEC = 3'd4;
 					end else if (DMA_WTN[1:0] && {1'b0,DMA_WTN[1:0]} < DMA_WTN_OFFS) begin
 						DMA_WTN_DEC = {1'b0,DMA_WTN[1:0]};
 					end
