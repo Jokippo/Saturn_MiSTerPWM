@@ -267,7 +267,7 @@ module emu
 	// 0         1         2         3          4         5         6   	   7         8         9
 	// 01234567890123456789012345678901 23456789012345678901234567890123 45678901234567890123456789012345
 	// 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-	// XXXX XXXXXXXXXXXXXXXXXXXXXXXXX     XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXXXXXXX
+	// XXXX XXXXXXXXXXXXXXXXXXXXXXXXX     XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXX
 	
 	`include "build_id.v"
 	localparam CONF_STR = {
@@ -299,8 +299,8 @@ module emu
 		"P1o[50],Composite Blend,Off,On;",
 		"P1-;",
 		"P1o[64],Horizontal Crop,Off,On;",
-		"P1o[61],Vertical Crop,Disabled,216p(5x);",
-		"P1o[54:51],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
+		"D8P1o[61],Vertical Crop,Disabled,216p(5x);",
+		"D8P1o[54:51],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 		"P1o[56:55],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 `ifdef STV_BUILD
 		"P1-;",
@@ -311,6 +311,7 @@ module emu
 		"P2,Input;",
 		"P2-;",
 `ifndef STV_BUILD
+		"P2O[76],Swap Joysticks,No,Yes;",
 		"P2O[27],Pad 1 SNAC,OFF,ON;",
 		"P2-;",
 		"D5P2O[17:15],Pad 1,Digital,Virt LGun,Wheel,Mission Stick,3D Pad,Dual Mission,Mouse,Off;",
@@ -320,7 +321,7 @@ module emu
 		"D6P2O[49:48],LGun P1 Crosshair,Small,Medium,Big,None;",
 		"P2-;",
 		"P2-;",
-		"P2O[20:18],Pad 2,Digital,Virt LGun,Wheel,Mission Stick,3D Pad,Dual Mission,Mouse,Off;",
+		"D5P2O[20:18],Pad 2,Digital,Virt LGun,Wheel,Mission Stick,3D Pad,Dual Mission,Mouse,Off;",
 		"P2-;",
 		"D7P2O[57],LGun P2 XY Ctrl,Joy 2,Mouse;",
 		"D7P2O[58],LGun P2 Buttons,Joy 2,Mouse;",
@@ -453,7 +454,7 @@ module emu
 	);
 	
 `ifndef STV_BUILD
-	assign menumask = {~lg_p2_ena, ~lg_p1_ena, snac, 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
+	assign menumask = {(status[56:55] != 2'b00), ~lg_p2_ena, ~lg_p1_ena, snac, 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
 `else
 	assign menumask = {~status[75], 1'b1, 1'b1, ~status[8], 1'b1, ~bk_ena};
 `endif
@@ -467,11 +468,8 @@ module emu
 `else
 	wire stv_download = ioctl_download & (ioctl_index[5:2] == 6'b000000);
 	
-	//[3:0] - chip 
-	//1 - 315-5881:
-	//		[7:4] - 315-5838 game: 1:astrass, 2:elandore, 3:ffreveng, 4:rsgun, 5:sss, 6:twcup98/twsoc98, ...
-	//
-	//2 - 315-5838
+	//[3:0] - chip (1: 315-5881, 2: 315-5838, 3: Acclaim RAX (batmanfr), ...)
+	//[7:4] - game (1:astrass, 2:elandore, 3:ffreveng, 4:rsgun, 5:sss, 6:twcup98/twsoc98, ...)
 	reg  [7:0] STV_MODE = '0;
 	always @(posedge clk_sys) begin
 		if (stv_download && ioctl_wr) begin
@@ -664,67 +662,66 @@ module emu
 			USER_OUT <= '1;
 		end
 	end
-
 	
 	
-	wire [24:0] MEM_A;
-	wire [31:0] MEM_DI;
-	wire [31:0] MEM_DO;
-	wire        ROM_CS_N;
-	wire        SRAM_CS_N;
-	wire        RAML_CS_N;
-	wire        RAMH_CS_N;
-	wire        RAMH_RFS;
-	wire  [3:0] MEM_DQM_N;
-	wire        MEM_RD_N;
-	wire        MEM_WAIT_N;
+	wire [24: 0] MEM_A;
+	wire [31: 0] MEM_DI;
+	wire [31: 0] MEM_DO;
+	wire         ROM_CS_N;
+	wire         SRAM_CS_N;
+	wire         RAML_CS_N;
+	wire         RAMH_CS_N;
+	wire         RAMH_RFS;
+	wire [ 3: 0] MEM_DQM_N;
+	wire         MEM_RD_N;
+	wire         MEM_WAIT_N;
 `ifdef STV_BUILD
-	wire        STVIO_CS_N;
+	wire         STVIO_CS_N;
 `endif
 	
-	wire [18:1] VDP1_VRAM_A;
-	wire [15:0] VDP1_VRAM_D;
-	wire [15:0] VDP1_VRAM_Q;
-	wire  [1:0] VDP1_VRAM_WE;
-	wire        VDP1_VRAM_RD;
-	wire  [8:0] VDP1_VRAM_BLEN;
-	wire        VDP1_VRAM_RDY;
-	wire [17:1] VDP1_FB0_A;
-	wire [15:0] VDP1_FB0_D;
-	wire [15:0] VDP1_FB0_Q;
-	wire  [1:0] VDP1_FB0_WE;
-	wire        VDP1_FB0_RD;
-	wire [17:1] VDP1_FB1_A;
-	wire [15:0] VDP1_FB1_D;
-	wire [15:0] VDP1_FB1_Q;
-	wire  [1:0] VDP1_FB1_WE;
-	wire        VDP1_FB1_RD;
-	wire        VDP1_FB_RDY;
-	wire        VDP1_FB_MODE3;
+	wire [18: 1] VDP1_VRAM_A;
+	wire [15: 0] VDP1_VRAM_D;
+	wire [15: 0] VDP1_VRAM_Q;
+	wire [ 1: 0] VDP1_VRAM_WE;
+	wire         VDP1_VRAM_RD;
+	wire [ 8: 0] VDP1_VRAM_BLEN;
+	wire         VDP1_VRAM_RDY;
+	wire [17: 1] VDP1_FB0_A;
+	wire [15: 0] VDP1_FB0_D;
+	wire [15: 0] VDP1_FB0_Q;
+	wire [ 1: 0] VDP1_FB0_WE;
+	wire         VDP1_FB0_RD;
+	wire [17: 1] VDP1_FB1_A;
+	wire [15: 0] VDP1_FB1_D;
+	wire [15: 0] VDP1_FB1_Q;
+	wire [ 1: 0] VDP1_FB1_WE;
+	wire         VDP1_FB1_RD;
+	wire         VDP1_FB_RDY;
+	wire         VDP1_FB_MODE3;
 	
-	wire [17:1] VDP2_RA0_A;
-	wire [16:1] VDP2_RA1_A;
-	wire [63:0] VDP2_RA_D;
-	wire  [7:0] VDP2_RA_WE;
-	wire        VDP2_RA_RD;
-	wire [31:0] VDP2_RA0_Q;
-	wire [31:0] VDP2_RA1_Q;
-	wire [17:1] VDP2_RB0_A;
-	wire [16:1] VDP2_RB1_A;
-	wire [63:0] VDP2_RB_D;
-	wire  [7:0] VDP2_RB_WE;
-	wire        VDP2_RB_RD;
-	wire [31:0] VDP2_RB0_Q;
-	wire [31:0] VDP2_RB1_Q;
+	wire [17: 1] VDP2_RA0_A;
+	wire [16: 1] VDP2_RA1_A;
+	wire [63: 0] VDP2_RA_D;
+	wire [ 7: 0] VDP2_RA_WE;
+	wire         VDP2_RA_RD;
+	wire [31: 0] VDP2_RA0_Q;
+	wire [31: 0] VDP2_RA1_Q;
+	wire [17: 1] VDP2_RB0_A;
+	wire [16: 1] VDP2_RB1_A;
+	wire [63: 0] VDP2_RB_D;
+	wire [ 7: 0] VDP2_RB_WE;
+	wire         VDP2_RB_RD;
+	wire [31: 0] VDP2_RB0_Q;
+	wire [31: 0] VDP2_RB1_Q;
 	
-	wire [18:1] SCSP_RAM_A;
-	wire [15:0] SCSP_RAM_D;
-	wire  [1:0] SCSP_RAM_WE;
-	wire        SCSP_RAM_RD;
-	wire        SCSP_RAM_CS;
-	wire [15:0] SCSP_RAM_Q;
-	wire        SCSP_RAM_RFS;
-	wire        SCSP_RAM_RDY;
+	wire [18: 1] SCSP_RAM_A;
+	wire [15: 0] SCSP_RAM_D;
+	wire [ 1: 0] SCSP_RAM_WE;
+	wire         SCSP_RAM_RD;
+	wire         SCSP_RAM_CS;
+	wire [15: 0] SCSP_RAM_Q;
+	wire         SCSP_RAM_RFS;
+	wire         SCSP_RAM_RDY;
 	
 	wire         SMPC_DOTSEL;
 	wire [ 6: 0] SMPC_PDR1I;
@@ -734,39 +731,49 @@ module emu
 	wire [ 6: 0] SMPC_PDR2O;
 	wire [ 6: 0] SMPC_DDR2;
 	
-	wire        CD_CDATA;
-	wire        CD_HDATA;
-	wire        CD_COMCLK;
-	wire        CD_COMREQ_N;
-	wire        CD_COMSYNC_N;
-	wire [17:0] CD_DATA;
-	wire        CD_CK;
-	wire        CD_AUDIO;
+	wire         CD_CDATA;
+	wire         CD_HDATA;
+	wire         CD_COMCLK;
+	wire         CD_COMREQ_N;
+	wire         CD_COMSYNC_N;
+	wire [17: 0] CD_DATA;
+	wire         CD_CK;
+	wire         CD_AUDIO;
 	
-	wire [18:1] CD_RAM_A;
-	wire [15:0] CD_RAM_D;
-	wire  [1:0] CD_RAM_WE;
-	wire        CD_RAM_RD;
-	wire        CD_RAM_CS;
-	wire [15:0] CD_RAM_Q;
-	wire        CD_RAM_RDY;
+	wire [18: 1] CD_RAM_A;
+	wire [15: 0] CD_RAM_D;
+	wire [ 1: 0] CD_RAM_WE;
+	wire         CD_RAM_RD;
+	wire         CD_RAM_CS;
+	wire [15: 0] CD_RAM_Q;
+	wire         CD_RAM_RDY;
 	
-	wire [25:1] CART_MEM_A;
-	wire [15:0] CART_MEM_D;
-	wire [15:0] CART_MEM_Q;
-	wire [ 1:0] CART_MEM_WE;
-	wire        CART_MEM_RD;
-	wire        CART_MEM_RDY;
+	wire [25: 1] CART_MEM_A;
+	wire [15: 0] CART_MEM_D;
+	wire [15: 0] CART_MEM_Q;
+	wire [ 1: 0] CART_MEM_WE;
+	wire         CART_MEM_RD;
+	wire         CART_MEM_RDY;
+	wire [24: 1] CART_RAX_MEM_A;
+	wire [15: 0] CART_RAX_MEM_DI;
+	wire [15: 0] CART_RAX_MEM_DO;
+	wire         CART_RAX_MEM_RD;
+	wire         CART_RAX_MEM_WR;
+	wire         CART_RAX_MEM_RDY;
+	wire [15: 0] RAX_SOUND_L;
+	wire [15: 0] RAX_SOUND_R;
 	
-	wire  [7:0] R, G, B;
-	wire        HS_N,VS_N;
-	wire        DCLK;
-	wire        HBL_N, VBL_N;
-	wire        FIELD;
-	wire        INTERLACE;
-	wire  [1:0] HRES;
-	wire  [1:0] VRES;
-	wire        DCE_R;
+	wire [ 7: 0] R, G, B;
+	wire         HS_N,VS_N;
+	wire         DCLK;
+	wire         HBL_N, VBL_N;
+	wire         FIELD;
+	wire         INTERLACE;
+	wire [ 1: 0] HRES;
+	wire [ 1: 0] VRES;
+	wire         DCE_R;
+	wire [15: 0] SOUND_L;
+	wire [15: 0] SOUND_R;
 	
 	bit MCLK_DIV;
 	always @(posedge clk_sys) MCLK_DIV <= ~MCLK_DIV;
@@ -942,6 +949,7 @@ module emu
 `else
 		.STV_5881_MODE(STV_MODE[3:0] == 4'h1 ? STV_MODE[7:4] : 4'h0),
 		.STV_5838_MODE(STV_MODE[3:0] == 4'h2),
+		.STV_BATMAN_MODE(STV_MODE[3:0] == 4'h3),
 `endif
 		.CART_MEM_A(CART_MEM_A),
 		.CART_MEM_D(CART_MEM_D),
@@ -949,6 +957,17 @@ module emu
 		.CART_MEM_RD(CART_MEM_RD),
 		.CART_MEM_Q(CART_MEM_Q),
 		.CART_MEM_RDY(CART_MEM_RDY),
+		
+`ifdef STV_BUILD
+		.RAX_MEM_A(CART_RAX_MEM_A),
+		.RAX_MEM_DI(CART_RAX_MEM_DI),
+		.RAX_MEM_DO(CART_RAX_MEM_DO),
+		.RAX_MEM_RD(CART_RAX_MEM_RD),
+		.RAX_MEM_WR(CART_RAX_MEM_WR),
+		.RAX_MEM_RDY(CART_RAX_MEM_RDY),
+		.RAX_SOUND_L(RAX_SOUND_L),
+		.RAX_SOUND_R(RAX_SOUND_R),
+`endif
 		
 `ifdef STV_BUILD
 		.STV_SW('1),
@@ -969,8 +988,8 @@ module emu
 		.VRES(VRES), 				//0-224,1-240,2-256
 		.DCE_R(DCE_R),
 		
-		.SOUND_L(AUDIO_L),
-		.SOUND_R(AUDIO_R),
+		.SOUND_L(SOUND_L),
+		.SOUND_R(SOUND_R),
 		
 		.FAST(fast_timing),
 		
@@ -981,6 +1000,13 @@ module emu
 		.DBG_RUN(DBG_RUN),
 		.DBG_EXT(DBG_EXT)
 	);
+`ifndef STV_BUILD
+	assign AUDIO_L = SOUND_L;
+	assign AUDIO_R = SOUND_R;
+`else
+	assign AUDIO_L = STV_MODE[3:0] == 4'h3 ? RAX_SOUND_L : SOUND_L;
+	assign AUDIO_R = STV_MODE[3:0] == 4'h3 ? RAX_SOUND_R : SOUND_R;
+`endif
 	
 `ifdef STV_BUILD
 	wire [ 7:0] STVIO_DO;
@@ -1000,7 +1026,9 @@ module emu
 		.RW_N(MEM_DQM_N[0]),
 		
 		.JOY1(joy1),
-		.JOY2(joy2)
+		.JOY2(joy2),
+		
+		.MODE(STV_MODE)
 	);
 	
 	reg  [ 6: 1] STV_EEPROM_ADDR;
@@ -1083,8 +1111,8 @@ module emu
 		.PDR2O(SMPC_PDR2O),
 		.DDR2(SMPC_DDR2),
 		
-		.JOY1(joy1),
-		.JOY2(joy2),
+		.JOY1(status[76] ? joy2 : joy1),
+		.JOY2(status[76] ? joy1 : joy2),
 
 		.JOY1_X1(joy0_x0),
 		.JOY1_Y1(joy0_y0),
@@ -1329,9 +1357,9 @@ module emu
 	wire [15:0] IO_DATA = {ioctl_data[7:0],ioctl_data[15:8]};
 	wire        IO_WR = (bios_download | cart_download) & ioctl_wr;
 	
-	wire [15:0] cdram_do,raml_do,vdp1vram_do,vdp1fb_do,cdbuf_do,cart_do,eeprom_do,bsram_do;
+	wire [15:0] cdram_do,raml_do,vdp1vram_do,vdp1fb_do,cdbuf_do,cart_do,eeprom_do,bsram_do,rax_do;
 	wire [31:0] ramh_do;
-	wire        cdram_busy,raml_busy,ramh_busy,vdp1vram_busy,vdp1fb_busy,cdbuf_busy,cart_busy,eeprom_busy,bios_busy,bsram_busy;
+	wire        cdram_busy,raml_busy,ramh_busy,vdp1vram_busy,vdp1fb_busy,cdbuf_busy,cart_busy,eeprom_busy,bios_busy,bsram_busy,rax_busy;
 	ddram ddram
 	(
 		.*,
@@ -1404,7 +1432,7 @@ module emu
 		.cdbuf_dout(cdbuf_do),
 		.cdbuf_busy(cdbuf_busy),
 		
-		//CART MEM
+		//CART MEM (0x34000000)
 `ifdef DEBUG
 		.cart_addr('0),
 		.cart_din ('0),
@@ -1419,7 +1447,7 @@ module emu
 		.cart_dout(cart_do),
 		.cart_busy(cart_busy),
 		
-		//STV EEPROM
+		//STV EEPROM (0x32000000)
 `ifndef STV_BUILD
 		.eeprom_addr('0),
 		.eeprom_rd  (0),
@@ -1429,6 +1457,21 @@ module emu
 `endif
 		.eeprom_dout(eeprom_do),
 		.eeprom_busy(eeprom_busy),
+		
+		//STV RAX ROM (0x36000000)
+`ifndef STV_BUILD
+		.rax_addr('0),
+		.rax_din ('0),
+		.rax_wr  (0),
+		.rax_rd  (0),
+`else
+		.rax_addr(CART_RAX_MEM_A[24:1]),
+		.rax_din (CART_RAX_MEM_DO),
+		.rax_wr  ({2{CART_RAX_MEM_WR&CART_RAX_MEM_A[24]}}),
+		.rax_rd  (CART_RAX_MEM_RD),
+`endif
+		.rax_dout(rax_do),
+		.rax_busy(rax_busy),
 	
 		//BIOS/CART load
 		.bios_addr(IO_ADDR),
@@ -1462,6 +1505,9 @@ module emu
 	
 	assign STV_EEPROM_Q = eeprom_do;
 	assign STV_EEPROM_RDY = ~eeprom_busy;
+	
+	assign CART_RAX_MEM_DI = rax_do;
+	assign CART_RAX_MEM_RDY = ~rax_busy;
 `endif
 
 
