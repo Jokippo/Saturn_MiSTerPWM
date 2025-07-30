@@ -269,7 +269,7 @@ module emu
 	// 0         1         2         3          4         5         6   	   7         8         9
 	// 01234567890123456789012345678901 23456789012345678901234567890123 45678901234567890123456789012345
 	// 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-	// XXXX XXXXXXXXXXXXXXXXXXXXXXXXXX    XX          XXXXXXXXXXXXXXXXXX XXXXXXXXXXXX
+	// XXXX XXXXXXXXXXXXXXXXXXXXXXXXXXX   XX          XXXXXXXXXXXXXXXXXX XXXXXXXXXXXX
 	
 	`include "build_id.v"
 	localparam CONF_STR = {
@@ -336,11 +336,12 @@ module emu
 		
 `endif
 		
-`ifndef MISTER_DUAL_SDRAM
 		"P3,Hardware;",
 		"P3-;",
+`ifndef MISTER_DUAL_SDRAM
 		"P3OS,Timing,Original,Fast;",
 `endif
+		"P3OV,Blurred VDP1 mesh,Off,On;",
 
 		"-;",
 		"R0,Reset;",
@@ -481,7 +482,6 @@ module emu
 	
 `ifndef STV_BUILD
 	wire [2:0] cart_type = status[23:21];
-	wire bios_sel = 0;
 `else
 	wire [2:0] cart_type = 3'd5;
 	wire bios_sel = status[30] & STV_ALTBIOS;
@@ -611,6 +611,7 @@ module emu
 `else
 	wire fast_timing = 0;
 `endif
+	wire blur_mesh = status[31];
 	
 	//region select
 `ifndef STV_BUILD
@@ -685,6 +686,7 @@ module emu
 	wire         SRAM_CS_N;
 	wire         RAML_CS_N;
 	wire         RAMH_CS_N;
+	wire         RAMH_BURST;
 	wire         RAMH_RFS;
 	wire [ 3: 0] MEM_DQM_N;
 	wire         MEM_RD_N;
@@ -867,6 +869,7 @@ module emu
 		.SRAM_CS_N(SRAM_CS_N),
 		.RAML_CS_N(RAML_CS_N),
 		.RAMH_CS_N(RAMH_CS_N),
+		.RAMH_BURST(RAMH_BURST),
 		.RAMH_RFS(RAMH_RFS),
 `ifdef STV_BUILD
 		.STVIO_CS_N(STVIO_CS_N),
@@ -1006,6 +1009,7 @@ module emu
 		.SOUND_R(SOUND_R),
 		
 		.FAST(fast_timing),
+		.BLUR_MESH(blur_mesh),
 		
 		.SCRN_EN(SCRN_EN),
 		.SND_EN(SND_EN),
@@ -1381,12 +1385,12 @@ module emu
 	);
 
 	//DDRAM
-	always @(posedge clk_sys) begin		
+	always @(posedge clk_sys) begin
 		ioctl_wait <= (bios_download && bios_busy) || (cart_download && bios_busy) || (save_download && bsram_busy) || (save_upload && bsram_busy);
 	end
-	wire [26:1] IO_ADDR = cart_download ? {1'b1,ioctl_addr[25:1]} : {8'b00000000,ioctl_addr[18:1]};
-	wire [15:0] IO_DATA = {ioctl_data[7:0],ioctl_data[15:8]};
-	wire        IO_WR = (bios_download | cart_download) & ioctl_wr;
+	wire [26: 1] IO_ADDR = cart_download ? {1'b1,ioctl_addr[25:1]} : {8'b00000000,ioctl_addr[18:1]};
+	wire [15: 0] IO_DATA = {ioctl_data[7:0],ioctl_data[15:8]};
+	wire         IO_WR = (bios_download | cart_download) & ioctl_wr;
 	
 `ifndef STV_BUILD
 	reg  [31: 0] ramh_din;
@@ -1589,10 +1593,11 @@ module emu
 		.init(rst_ram),
 		.clk(clk_ram),
 		
-		.addr({MEM_A[19:2],1'b0}),
+		.addr(MEM_A[19:2]),
 		.din(ramh_din),
 		.wr(ramh_wr),
 		.rd(~RAMH_CS_N & ~MEM_RD_N),
+		.burst(RAMH_BURST),
 		.dout(sdr2_do),
 		.rfs(~RAMH_CS_N & RAMH_RFS),
 		.busy(sdr2_busy)
@@ -1801,7 +1806,7 @@ module emu
 /////////////////////////  BRAM SAVE/LOAD  /////////////////////////////
 `ifndef STV_BUILD
 	wire downloading = save_download;
-	wire bk_cart    = cart_type == 3'h4;
+	wire bk_cart    = cart_type == 3'h5;
 	wire bk_change  = (~SRAM_CS_N & ~MEM_DQM_N[0]) | (CART_MEM_WE[0] & bk_cart);
 	wire bk_load    = status[24];
 	wire bk_save    = status[25];
@@ -2046,7 +2051,6 @@ module emu
 	wire [9:0] crop_amount = hcrop_en ? ((active_width == 10'd704) ? 10'd4 : (INTERLACE ? 10'd4 : 10'd2)) : 10'd0;
 
 	wire hcrop_blank = (h_count < crop_amount) || (h_count >= (active_width - crop_amount));
-	wire hblank_cropped = cofi_hbl | (hcrop_en & hcrop_blank);
 	
 	wire [7:0] cofi_r, cofi_g, cofi_b;
 	wire       cofi_hs, cofi_vs, cofi_hbl, cofi_vbl;
@@ -2073,7 +2077,7 @@ module emu
 `else
 	wire [7:0] cofi_r = R, cofi_g = G, cofi_b = B;
 	wire cofi_hs = ~HS_N, cofi_vs = ~VS_N;
-	wire hblank_cropped = ~HBL_N, cofi_vbl = ~VBL_N;
+	wire cofi_hbl = ~HBL_N, cofi_vbl = ~VBL_N;
 `endif
 
 `ifndef STV_BUILD
@@ -2082,10 +2086,13 @@ module emu
 	wire [7:0] mixer_r = lg_p1_targ_draw ? {8{lg_p1_target[0]}} : lg_p2_targ_draw ? {8{lg_p2_target[0]}} : cofi_r;
 	wire [7:0] mixer_g = lg_p1_targ_draw ? {8{lg_p1_target[1]}} : lg_p2_targ_draw ? {8{lg_p2_target[1]}} : cofi_g;
 	wire [7:0] mixer_b = lg_p1_targ_draw ? {8{lg_p1_target[2]}} : lg_p2_targ_draw ? {8{lg_p2_target[2]}} : cofi_b;
+	wire [7:0] crop_r = (hcrop_en && hcrop_blank) ? 8'd0 : mixer_r;
+	wire [7:0] crop_g = (hcrop_en && hcrop_blank) ? 8'd0 : mixer_g;
+	wire [7:0] crop_b = (hcrop_en && hcrop_blank) ? 8'd0 : mixer_b;
 `else
-	wire [7:0] mixer_r = cofi_r;
-	wire [7:0] mixer_g = cofi_g;
-	wire [7:0] mixer_b = cofi_b;
+	wire [7:0] crop_r = (hcrop_en && hcrop_blank) ? 8'd0 : cofi_r;
+	wire [7:0] crop_g = (hcrop_en && hcrop_blank) ? 8'd0 : cofi_g;
+	wire [7:0] crop_b = (hcrop_en && hcrop_blank) ? 8'd0 : cofi_b;
 `endif
 
 	video_mixer #(.LINE_LENGTH((352*2)+8), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
@@ -2098,14 +2105,14 @@ module emu
 		.freeze_sync(),
 	
 		.VGA_DE(vga_de),
-		.R(mixer_r),
-		.G(mixer_g),
-		.B(mixer_b),
+		.R(crop_r),
+		.G(crop_g),
+		.B(crop_b),
 	
 		// Positive pulses.
 		.HSync(analog_hs), 
 		.VSync(analog_vs),  
-		.HBlank(hblank_cropped),
+		.HBlank(cofi_hbl),
 		.VBlank(cofi_vbl) 
 	);
 
@@ -2122,7 +2129,7 @@ module emu
 		.hs_in(cofi_hs),
 		.vs_in(cofi_vs),
 		.LVBL(~cofi_vbl),
-		.LHBL(~hblank_cropped),
+		.LHBL(~cofi_hbl),
 		.hoffset(-hoffset),
 		.voffset(-voffset),
 		.hres_mode(HRES[1]),
