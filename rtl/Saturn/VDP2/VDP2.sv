@@ -59,7 +59,7 @@ module VDP2 (
 	
 	output            FIELD,
 	output            INTERLACE,
-	output reg  [1:0] HRES,
+	output reg  [2:0] HRES,
 	output reg  [1:0] VRES,
 	
 	input       [7:0] SCRN_EN,
@@ -129,29 +129,29 @@ module VDP2 (
 	
 	//H 427/455
 	//V 263/313
-	parameter HRES_320         = 9'd427;
-	parameter HRES_352         = 9'd455;
-	parameter HS_START_320     = 9'd350;
-	parameter HS_START_352     = 9'd380;
-	parameter HS_MID_320       = 9'd137;
-	parameter HS_MID_352       = 9'd153;
-	parameter HBL_START_320    = 9'd312;
-	parameter HBL_START_352    = 9'd344;
-	parameter VRES_NTSC        = 9'd263;
-	parameter VRES_PAL         = 9'd313;
-	parameter VS_START_224     = 9'd239;
-	parameter VS_START_240     = 9'h0F5;
-	parameter VS_START_PAL_224 = 9'd264;
-	parameter VS_START_PAL_240 = 9'd269;
-	parameter VS_START_PAL_256 = 9'd276;
-	parameter VS_END_224       = VS_START_224 + 9'd3;
-	parameter VS_END_240       = /*VS_START_240*/9'h1EE + 9'd3;
-	parameter VS_END_PAL_224   = VS_START_PAL_224 + 9'd3;
-	parameter VS_END_PAL_240   = VS_START_PAL_240 + 9'd3;
-	parameter VS_END_PAL_256   = VS_START_PAL_256 + 9'd3;
-	parameter VBL_START_224    = 9'h0E0;
-	parameter VBL_START_240    = 9'h0F0;
-	parameter VBL_START_256    = 9'h100;
+	parameter HRES_320          = 9'd427;
+	parameter HRES_352          = 9'd455;
+	parameter HS_START_320      = 9'd350;
+	parameter HS_START_352      = 9'd380;
+	parameter HS_MID_320        = 9'd137;
+	parameter HS_MID_352        = 9'd153;
+	parameter HBL_START_320     = 9'd312;
+	parameter HBL_START_352     = 9'd344;
+	parameter VRES_NTSC         = 10'd263;
+	parameter VRES_PAL          = 10'd313;
+	parameter VS_START_NTSC_224 = 10'h0ED;
+	parameter VS_START_NTSC_240 = 10'h0F5;
+	parameter VS_START_PAL_224  = 10'h103;
+	parameter VS_START_PAL_240  = 10'h10B;
+	parameter VS_START_PAL_256  = 10'h113;
+	parameter VS_END_NTSC_224   = /*VS_START_NTSC_224*/10'h1E6 + 10'd3;
+	parameter VS_END_NTSC_240   = /*VS_START_NTSC_240*/10'h1EE + 10'd3;
+	parameter VS_END_PAL_224    = /*VS_START_PAL_224*/10'h1CA + 10'd3;
+	parameter VS_END_PAL_240    = /*VS_START_PAL_240*/10'h1D2 + 10'd3;
+	parameter VS_END_PAL_256    = /*VS_START_PAL_256*/10'h1DA + 10'd3;
+	parameter VBL_START_224     = 10'h0E0;
+	parameter VBL_START_240     = 10'h0F0;
+	parameter VBL_START_256     = 10'h100;
 	
 	VDP2Regs_t REGS;
 	
@@ -177,8 +177,10 @@ module VDP2 (
 	
 	
 	bit          DOT_CE_R,DOT_CE_F;
-	bit  [ 8: 0] H_CNT, V_CNT;
-	bit  [ 8: 0] HCT,VCT;
+	bit  [ 8: 0] H_CNT, HCT;
+	bit  [ 8: 0] V_CNT, VCT;
+	bit          HCT9;
+	bit          VCT0;
 	bit  [ 8: 0] SCRNX, SCRNY;
 	bit          SCRNX0;
 	bit  [ 3: 0] MOSAIC_HCNT,MOSAIC_VCNT;
@@ -215,73 +217,84 @@ module VDP2 (
 	assign DCE_R = DOT_CE_R;
 	assign DCE_F = DOT_CE_F;
 	
-	wire LAST_DOT = (H_CNT == HRES_320 - 1 && !HRES[0]) || (H_CNT == HRES_352 - 1 && HRES[0]);
-	wire [8:0] VBL_HPOS = !HRES[0] ? 9'h15B : 9'h177;
+	wire LAST_DOT = HCT == (HRES[2] ? 9'h1FE : 9'h1FF);
+	wire [8:0] HBLANK_START = !HRES[2] ? (!HRES[0] ? 9'h144 : 9'h164) : (!HRES[0] ? 9'h148 : 9'h168);
 	wire [8:0] HS_START = (!HRES[0] ? HS_START_320 : HS_START_352) - (!PAL ? 9'd0 : 9'd4);
 	wire [8:0] HS_MID = (!HRES[0] ? HS_MID_320 : HS_MID_352) - (!PAL ? 9'd0 : 9'd4);
 	wire [8:0] HS_END =  HS_START + 9'd32; 
-	wire [8:0] HBL_END = !HRES[1] ? 9'd2 : 9'd1;
-	wire [8:0] HDISP_END = !HRES[0] ? 9'd320 - 9'd1 : 9'd352 - 9'd1;
-	wire [8:0] BREAK_DOT  = !HRES[0] ? 9'h15B - 9'd1 : 9'h177 - 9'd1;
-	wire [8:0] VBL_START = (!VRES[1] || !PAL ? (!VRES[0] ? VBL_START_224 : VBL_START_240) : VBL_START_256);
-	wire [8:0] VS_NTSC_START  = (!VRES[1] ? (!VRES[0] ? VS_START_224 : VS_START_240) : VS_START_240);
-	wire [8:0] VS_PAL_START  = (!VRES[1] ? (!VRES[0] ? VS_START_PAL_224 : VS_START_PAL_240) : VS_START_PAL_256);
-	wire [8:0] VS_NTSC_END    = !VRES[1] ? (!VRES[0] ? VS_END_224 : VS_END_240) : VS_END_240;
-	wire [8:0] VS_PAL_END    = !VRES[1] ? (!VRES[0] ? VS_END_PAL_224 : VS_END_PAL_240) : VS_END_PAL_256;
-	wire [8:0] VS_START  = PAL ? VS_PAL_START : VS_NTSC_START;
-	wire [8:0] VS_END    = PAL ? VS_PAL_END : VS_NTSC_END;
-	wire [8:0] VSYNC_HSTART = REGS.TVMD.LSMD[1] && ODD ? HS_MID : HS_START;
-	wire [8:0] VBORD_START  = !VRES[1] ? (!VRES[0] ? 9'd263-9'd12 : 9'd263-9'd4) : 9'd313-9'd0;
-	wire [8:0] VBORD_END  = !VRES[1] ? (!VRES[0] ? 9'd224+9'd12 : 9'd240+9'd4) : 9'd256+9'd0;
-	wire [8:0] BREAK_LINE  = (!PAL ? 9'h0F5 : 9'h127);
-	wire [8:0] NEXT_TO_LAST_LINE  = 9'h1FE - (REGS.TVMD.LSMD[1] && ODD ? 9'd1 : 9'd0);
-	wire [8:0] LAST_LINE  = 9'h1FF - (REGS.TVMD.LSMD[1] && ODD ? 9'd1 : 9'd0);
-	wire IS_LAST_LINE = (V_CNT == LAST_LINE);
+	wire [8:0] HBL_START = (!HRES[0] ? 9'h143 : 9'h163) - (!HRES[1] || HRES[2] ? 9'd0 : 9'd1);
+	wire [8:0] HBL_END = !HRES[1] || HRES[2] ? 9'd2 : 9'd1;
+	wire [8:0] BREAK_DOT  = !HRES[2] ? (!HRES[0] ? 9'h15B - 9'd1 : 9'h177 - 9'd1) : (!HRES[0] ? 9'h15A - 9'd2 : 9'h178 - 9'd2);
+	wire [8:0] VINC_DOT0  = !HRES[2] ? (!HRES[0] ? 9'h085 - 9'd1 : 9'h093 - 9'd1) : (!HRES[0] ? 9'h15A - 9'd2 : 9'h16C - 9'd2);
+	wire [8:0] VINC_DOT1  = !HRES[2] ? (!HRES[0] ? 9'h15B - 9'd1 : 9'h177 - 9'd1) : (!HRES[0] ? 9'h15A - 9'd2 : 9'h16C - 9'd2);
+	wire [9:0] VBL_START = HRES[2] ? 10'h1E0 : (!VRES[1] || !PAL ? (!VRES[0] ? VBL_START_224 : VBL_START_240) : VBL_START_256) << 1;
+	wire [9:0] VS_NTSC_START  = (!VRES[1] ? (!VRES[0] ? VS_START_NTSC_224 : VS_START_NTSC_240) : VS_START_NTSC_240);
+	wire [9:0] VS_PAL_START  = (!VRES[1] ? (!VRES[0] ? VS_START_PAL_224 : VS_START_PAL_240) : VS_START_PAL_256);
+	wire [9:0] VS_NTSC_END    = !VRES[1] ? (!VRES[0] ? VS_END_NTSC_224 : VS_END_NTSC_240) : VS_END_NTSC_240;
+	wire [9:0] VS_PAL_END    = !VRES[1] ? (!VRES[0] ? VS_END_PAL_224 : VS_END_PAL_240) : VS_END_PAL_256;
+	wire [9:0] VS_START  = (PAL ? VS_PAL_START : VS_NTSC_START) - (!NNI        ? 10'd1 : 10'd0);
+	wire [9:0] VS_END    = (PAL ? VS_PAL_END   : VS_NTSC_END  ) - (!NNI && ODD ? 10'd1 : 10'd0);
+	wire [9:0] VSYNC_HSTART = REGS.TVMD.LSMD[1] && ODD ? HS_MID : HS_START;
+//	wire [8:0] VBORD_START  = !VRES[1] ? (!VRES[0] ? 9'd263-9'd12 : 9'd263-9'd4) : 9'd313-9'd0;
+//	wire [8:0] VBORD_END  = !VRES[1] ? (!VRES[0] ? 9'd224+9'd12 : 9'd240+9'd4) : 9'd256+9'd0;
+	wire [9:0] INC_LINE  = HRES[2] ? 10'h001 : 10'h002;
+	wire [9:0] BREAK_LINE  = HRES[2] ? (!HRES[0] ? 10'h1EA : 10'h1F7) - 10'd1                         : (((!PAL ? (!VRES[0] ? 10'h0ED : 10'h0F5) : (!VRES[1] ? (!VRES[0] ? 10'h103 : 10'h10B) : 10'h113)) - (!NNI        ? 10'd1 : 10'd0) - 10'd1) << 1)|10'h001;
+	wire [9:0] JUMP_LINE   = HRES[2] ? (!HRES[0] ? 10'h3DD : 10'h3C5) - (!NNI && ODD ? 10'd2 : 10'd0) : (((!PAL ? (!VRES[0] ? 10'h1E6 : 10'h1EE) : (!VRES[1] ? (!VRES[0] ? 10'h1CA : 10'h1D2) : 10'h1DA)) - (!NNI && ODD ? 10'd1 : 10'd0)        ) << 1);
+	wire [9:0] NEXT_TO_LAST_LINE  = 10'h3FD;
+	wire [9:0] LAST_LINE  = 10'h3FF;
 	
-	bit  [ 8: 0] HDISP_CNT;
-	bit          VBLANK,VBLANK2;
-	bit          HBLANK;
+	bit          VB_INT,VBLANK;
+	bit          HB_INT,HBLANK;
 	bit          ODD;
 	bit          VSYNC;
 	bit          HSYNC;
 	always @(posedge CLK or negedge RST_N) begin
+		bit  [ 1: 0] VRES_LATCH0,VRES_LATCH1;
+		
 		if (!RST_N) begin
+			{HCT9,HCT} <= '0;
+			{VCT,VCT0} <= '0;
+			HB_INT <= 0;
+			VB_INT <= 0;
 			H_CNT <= '0;
 			V_CNT <= '0;
-			HCT <= '0;
-			VCT <= '0;
-			HSYNC <= 0;
-			VSYNC <= 0;
 			HBLANK <= 0;
 			VBLANK <= 0;
 			ODD <= 0;
-			HDISP_CNT <= '0;
-		end
-		else if (DOT_CE_R) begin
-			H_CNT <= H_CNT + 9'd1;
-			if (H_CNT == BREAK_DOT) begin
-				HCT <= 9'h1B0;
-			end else if (LAST_DOT) begin
-				H_CNT <= '0;
-				V_CNT <= V_CNT + 9'd1;
-				if (V_CNT == BREAK_LINE - 1) begin
-					V_CNT <= 9'h1EE;
-				end else if (V_CNT == LAST_LINE) begin
-					V_CNT <= '0;
+			HSYNC <= 0;
+			VSYNC <= 0;
+		end else begin
+		if (DOT_CE_R) begin
+			{HCT9,HCT} <= ({HCT9,HCT} + (HRES[2] ? 10'd2 : 10'd1)) & {9'b111111111,~HRES[2]};
+			if ({HCT9,HCT} == {1'b0,BREAK_DOT}) begin
+				{HCT9,HCT} <= HRES[2] && HRES[0] ? 10'h3D0 : 10'h3B0;
+			end
+			if ({HCT9,HCT} == {1'b0,VINC_DOT0} || {HCT9,HCT} == {1'b0,VINC_DOT1}) begin
+				{VCT,VCT0} <= {VCT,VCT0} + 10'd1;
+				if ({VCT,VCT0} == BREAK_LINE) begin
+					{VCT,VCT0} <= JUMP_LINE;
+					ODD <= ~ODD;
+				end else if ({VCT,VCT0} == LAST_LINE) begin
+					{VCT,VCT0} <= '0;
+				end
+				
+				if ({VCT,VCT0} == (VBL_START - 10'd1)) begin
+					VBLANK <= 1;
+				end else if ({VCT,VCT0} == LAST_LINE) begin
+					VBLANK <= 0;
 				end
 			end
 			
-			HCT <= HCT + 9'd1;
-			if (HCT == BREAK_DOT) begin
-				HCT <= 9'h1B0;
-				VCT <= VCT + 9'd1;
-				if (VCT == BREAK_LINE - 1) begin
-					VCT <= 9'h1EE;
-				end else if (VCT == LAST_LINE) begin
-					VCT <= '0;
-				end
-			end else if (LAST_DOT) begin
-				HCT <= '0;
+			H_CNT <= (H_CNT + (HRES[2] ? 9'd2 : 9'd1)) & {8'b11111111,~HRES[2]};
+			if (LAST_DOT) begin
+				H_CNT <= '0;
+				V_CNT <= VCT;
+			end
+			
+			if (HCT == HBLANK_START - (HRES[2] ? 9'd2 : 9'd1)) begin
+				HBLANK <= 1;
+			end else if (HCT == (HRES[2] ? 9'd8 - 9'd2 : 9'd4 - 9'd1)) begin
+				HBLANK <= 0;
 			end
 			
 			if (H_CNT == HS_START - 1) begin
@@ -289,120 +302,99 @@ module VDP2 (
 			end else if (H_CNT == HS_END - 1) begin
 				HSYNC <= 0;
 			end
-			
-			HDISP_CNT <= HDISP_CNT + 9'd1;
-			if (H_CNT == HBL_END) begin
-				HBLANK <= 0;
-				HDISP_CNT <= '0;
-			end else if (HDISP_CNT == HDISP_END) begin
-				HBLANK <= 1;
-			end
 
 			if (H_CNT == VSYNC_HSTART - 1) begin
-				if (V_CNT == VS_START - 1) begin
+				if (VCT == VS_START - 10'd1) begin
 					VSYNC <= 1;
-				end else if (V_CNT == VS_END - 1) begin
+				end else if (VCT == VS_END - 10'd1) begin
 					VSYNC <= 0;
 				end
 			end
 			
-			if (H_CNT == VBL_HPOS - 1 && V_CNT == VBL_START - 1) begin
-				VBLANK <= 1;
-			end else if (H_CNT == VBL_HPOS - 1 && V_CNT == LAST_LINE) begin
-				VBLANK <= 0;
+			if (H_CNT == HBL_START - 1) begin
+				HB_INT <= 1;
+			end else if (H_CNT == HBL_END) begin
+				HB_INT <= 0;
 			end
 			
-			if (LAST_DOT && V_CNT == VBL_START - 1) begin
-				VBLANK2 <= 1;
-			end else if (LAST_DOT && V_CNT == NEXT_TO_LAST_LINE) begin
-				VBLANK2 <= 0;
+			if (LAST_DOT && V_CNT == (VBL_START - 10'd1)>>1) begin
+				VB_INT <= 1;
+			end else if (LAST_DOT && V_CNT == NEXT_TO_LAST_LINE>>1) begin
+				VB_INT <= 0;
 			end
 			
-			if (LAST_DOT && V_CNT == VBORD_START - 1) begin
-				
-			end else if (LAST_DOT && V_CNT == VBORD_END - 1) begin
-				if (REGS.TVMD.LSMD[1])
-					ODD <= ~ODD;
-				else
-					ODD <= 1;
+			if ({HCT9,HCT} == {1'b0,VINC_DOT0} || {HCT9,HCT} == {1'b0,VINC_DOT1}) begin
+				if ({VCT,VCT0} == NEXT_TO_LAST_LINE) begin
+					LSMD <= REGS.TVMD.LSMD;//?
+					if (REGS.TVMD.LSMD == 2'b00) ODD <= 1;
+				end
 			end
-			
-			HRES <= REGS.TVMD.HRESO[1:0];
-			VRES <= REGS.TVMD.VRESO[1:0] & {PAL,1'b1};
-			LSMD <= REGS.TVMD.LSMD;
-			/*if (VBLANK)*/ DISP <= REGS.TVMD.DISP;
-		end
-		else if (DOT_CE_F) begin
+			HRES <= REGS.TVMD.HRESO[2:0];
+			VRES_LATCH0 <= REGS.TVMD.VRESO[1:0] & {PAL,1'b1}; VRES_LATCH1 <= VRES_LATCH0;	VRES <= VRES_LATCH1;
+			DISP <= REGS.TVMD.DISP;
+		end else if (DOT_CE_F) begin
 			if (ODD && H_CNT == VSYNC_HSTART - 1) begin
-				if (V_CNT == VS_START - 1) begin
+				if (VCT == VS_START - 10'd1) begin
 					VSYNC <= 1;
-				end else if (V_CNT == VS_END - 1) begin
+				end else if (VCT == VS_END - 10'd1) begin
 					VSYNC <= 0;
 				end
 			end
+		end
 		end
 	end
-	wire DDI = &LSMD;//Double-density interlace
+	wire NNI = (LSMD == 2'b00);						//Non interlace
+	wire DDI = (LSMD == 2'b11);						//Double-density interlace
 	
-	wire [8:0] HINT_START = !HRES[0] ? 9'h138 : 9'h158;
-	wire [8:0] VINT_HPOS = !HRES[0] ? 9'h15B : 9'h177;
-	bit VINT;
-	bit HINT;
+	wire [ 9: 0] HINT_START = !HRES[2] ? (!HRES[0] ? 10'h138 : 10'h158) : (!HRES[0] ? 10'h122 : 10'h142);
+	bit          HINT,VINT;
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			HINT <= 0;
 			VINT <= 0;
 		end
-		else if (DOT_CE_R) begin
-			if (H_CNT == HINT_START - 1) begin
-				HINT <= 1;
-			end else if (LAST_DOT) begin
-				HINT <= 0;
+		else begin
+			if ({VCT,VCT0} == VBL_START) begin
+				VINT <= 1;
+			end
+			if ({VCT,VCT0} == 10'h3FE) begin
+				VINT <= 0;
 			end
 			
-			if (H_CNT == VINT_HPOS - 1) begin
-				if (V_CNT == VBL_START - 1) begin
-					VINT <= 1;
-				end else if (V_CNT == NEXT_TO_LAST_LINE) begin
-					VINT <= 0;
-				end
+			if ({HCT9,HCT} == HINT_START) begin
+				HINT <= 1;
+			end
+			if ({HCT9,HCT} == 10'h000) begin
+				HINT <= 0;
 			end
 		end
 	end
 	assign VINT_N = ~VINT;
 	assign HINT_N = ~HINT;
 	
-	wire [8:0] HTIM_START = !HRES[0] ? 9'h18B : 9'h1A8;
-	wire [8:0] HTIM_END = !HRES[0] ? 9'h1A3 : 9'h1BF;
-	bit VTIM;
-	bit HTIM;
+	wire [ 9: 0] HTIM_START = !HRES[0] ? 10'h3E0 - 9'h001 : 10'h3E1 - 9'h001;
+	wire [ 9: 0] HTIM_END = 10'h3F8;
+	bit          HTIM,VTIM;
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			HTIM <= 0;
 			VTIM <= 0;
 		end
 		else if (DOT_CE_R) begin
-			if (H_CNT == HTIM_START - 1) begin
+			if ({HCT9,HCT} == HTIM_START) begin
 				HTIM <= 1;
-			end else if (H_CNT == HTIM_END) begin
+			end else if ({HCT9,HCT} == HTIM_END) begin
 				HTIM <= 0;
 			end
 			
-			if (H_CNT == HTIM_START - 1) begin
-				if (V_CNT == VBL_START) begin
+			if ({HCT9,HCT} == HTIM_START) begin
+				if (VCT == (VBL_START>>1) + 9'h001) begin
 					VTIM <= 1;
-				end else if (V_CNT == LAST_LINE) begin
+				end else if (VCT == 9'h000) begin
 					VTIM <= 0;
 				end
 			end
 		end
-//		else if (DOT_CE_F) begin
-//			if (H_CNT == 9'h18B) begin
-//				HTIM <= 1;
-//			end else if (H_CNT == 9'h1A2) begin
-//				HTIM <= 0;
-//			end
-//		end
 	end
 	assign VTIM_N = ~VTIM;
 	assign HTIM_N = ~HTIM;
@@ -420,18 +412,24 @@ module VDP2 (
 	wire [ 8: 0] LW_FETCH_START = !HRES[0] ? 9'h187 : 9'h1A3;
 	wire [ 8: 0] LN_FETCH_START = !HRES[0] ? 9'h189 : 9'h1A5;
 	wire [ 8: 0] BS_FETCH_START = !HRES[0] ? 9'h18A : 9'h1A6;
+	wire [ 8: 0] NOACCESS_START = !HRES[0] ? 9'h136 : 9'h156;
+	wire [ 8: 0] NOACCESS_END = !HRES[0] ? 9'h13D : 9'h15D;
+	wire [ 8: 0] NOACCESS2_START = !HRES[0] ? 9'h13F : 9'h15F;
+	wire [ 8: 0] NOACCESS2_END = !HRES[0] ? 9'h145 : 9'h165;
+	wire [ 8: 0] NOACCESS3_START = !HRES[0] ? 9'h18D : 9'h1A9;
+	wire [ 8: 0] NOACCESS3_END = !HRES[0] ? 9'h18F : 9'h1AB;
 	wire [ 8: 0] REFRESH_START = !HRES[0] ? 9'h190 : 9'h1AC;
 	wire [ 8: 0] REFRESH_END = !HRES[0] ? 9'h194 : 9'h1B0;
-	wire [ 8: 0] NOACCESS_START = !HRES[0] ? 9'h136 : 9'h1A9;
-	wire [ 8: 0] NOACCESS_END = !HRES[0] ? 9'h13D : 9'h1AB;
-	wire [ 8: 0] NOACCESS2_START = !HRES[0] ? 9'h13F : 9'h162;
-	wire [ 8: 0] NOACCESS2_END = !HRES[0] ? 9'h145 : 9'h165;
-	wire [ 8: 0] NOACCESS3_START = !HRES[0] ? 9'h18E : 9'h0;
-	wire [ 8: 0] NOACCESS3_END = !HRES[0] ? 9'h18F : 9'h1FF;
 	wire [ 8: 0] NBG_SCREEN_START = !HRES[0] ? 9'h19D : 9'h1B9;
+	wire         IS_PRELAST_LINE = (V_CNT == NEXT_TO_LAST_LINE>>1);
+	wire         IS_LAST_LINE = (V_CNT == LAST_LINE>>1);
+	wire         IS_RENDER_LINES = (V_CNT < (VBL_START - INC_LINE)>>1) || IS_LAST_LINE;
+	wire         IS_VISIBLE_LINES = (V_CNT < VBL_START>>1);
+	wire         NBG_FETCH_START_EN = (H_CNT == NBG_FETCH_START - 1);
+	wire         NBG_FETCH_END_EN = (H_CNT == NBG_FETCH_END);
 	
 	bit  [ 2: 0] CELLX;
-	bit          NBG_FETCH;		//Normal screen pattern data fetch time
+	bit          NPN_FETCH;		//Normal screen pattern data fetch time
 	bit          NCH_FETCH;		//Normal screen char data fetch time
 	bit          NVCS_FETCH;	//Vertical cell scroll data fetch time
 	bit          RBG_CALC;
@@ -449,10 +447,11 @@ module VDP2 (
 	bit          REFRESH;		//VRAM refresh time
 	bit          NOACCESS;		//VRAM no access time
 	bit          DOT_FETCH;
+	bit  [ 4: 0] NFETCH_PIPE;
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			CELLX <= '0;
-			NBG_FETCH <= 0;
+			NPN_FETCH <= 0;
 			NCH_FETCH <= 0;
 			NVCS_FETCH <= 0;
 			RBG_FETCH <= 0;
@@ -469,94 +468,94 @@ module VDP2 (
 		end
 		else if (DOT_CE_R) begin
 			CELLX <= CELLX + 1'd1;
-			if (H_CNT == NBG_CELLX_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE)) begin
+			if (H_CNT == NBG_CELLX_START - 1 && IS_RENDER_LINES) begin
 				CELLX <= '0;
 			end
 			
-			if (H_CNT == NBG_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
-				NBG_FETCH <= 1;
+			if (NBG_FETCH_START_EN && IS_RENDER_LINES && DISP) begin
+				NPN_FETCH <= 1;
 			end else if (H_CNT == NBG_FETCH_END) begin
-				NBG_FETCH <= 0;
+				NPN_FETCH <= 0;
 			end
-			if (H_CNT == NBG_FETCH_START + 4 - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == NBG_FETCH_START + 4 - 1 && IS_RENDER_LINES && DISP) begin
 				NCH_FETCH <= 1;
 			end else if (H_CNT == NBG_FETCH_END + 4) begin
 				NCH_FETCH <= 0;
 			end
-			if (H_CNT == NBG_FETCH_START - 1 - 8 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == NBG_FETCH_START - 1 - 8 && IS_RENDER_LINES && DISP) begin
 				NVCS_FETCH <= 1;
 			end else if (H_CNT == NBG_FETCH_END) begin
 				NVCS_FETCH <= 0;
 			end
 			
-			if (H_CNT == RBG_FETCH_START - 1 - 4 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RBG_FETCH_START - 1 - 4 && IS_RENDER_LINES && DISP) begin
 				CT_FETCH <= 1;
 			end else if (H_CNT == RBG_FETCH_END - 4) begin
 				CT_FETCH <= 0;
 			end
-			if (H_CNT == RBG_FETCH_START - 1 - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE)) begin
+			if (H_CNT == RBG_FETCH_START - 1 - 1 && IS_RENDER_LINES) begin
 				RBG_CALC <= 1;
 			end else if (H_CNT == RBG_FETCH_END - 1) begin
 				RBG_CALC <= 0;
 			end
-			if (H_CNT == RBG_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RBG_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				RBG_FETCH <= 1;
 			end else if (H_CNT == RBG_FETCH_END) begin
 				RBG_FETCH <= 0;
 			end
-			if (H_CNT == RBG_FETCH_START + 4 - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RBG_FETCH_START + 4 - 1 && IS_RENDER_LINES && DISP) begin
 				RCH_FETCH <= 1;
 			end else if (H_CNT == RBG_FETCH_END /*+ 4*/) begin
 				RCH_FETCH <= 0;
 			end
 			
-			if (H_CNT == RPA_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RPA_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				RPA_FETCH <= 1;
 			end else if (H_CNT == RPA_FETCH_START + 24 - 1) begin
 				RPA_FETCH <= 0;
 			end
-			if (H_CNT == RPB_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RPB_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				RPB_FETCH <= 1;
 			end else if (H_CNT == RPB_FETCH_START + 24 - 1) begin
 				RPB_FETCH <= 0;
 			end
 			
-			if (H_CNT == RCTA_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RCTA_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				RCTA_FETCH <= 1;
 			end else if (H_CNT == RCTA_FETCH_START) begin
 				RCTA_FETCH <= 0;
 			end
-			if (H_CNT == RCTB_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == RCTB_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				RCTB_FETCH <= 1;
 			end else if (H_CNT == RCTB_FETCH_START) begin
 				RCTB_FETCH <= 0;
 			end
 			
-			if (H_CNT == LS_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == LS_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				LS_FETCH <= 1;
 			end else if (H_CNT == LS_FETCH_START + 6 - 1) begin
 				LS_FETCH <= 0;
 			end
 			
-			if (H_CNT == LW_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == LW_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				LW_FETCH <= 1;
 			end else if (H_CNT == LW_FETCH_START + 2 - 1) begin
 				LW_FETCH <= 0;
 			end
 			
-			if (H_CNT == LN_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == LN_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				LN_FETCH <= 1;
 			end else begin
 				LN_FETCH <= 0;
 			end
 			
-			if (H_CNT == BS_FETCH_START - 1 && (V_CNT < VBL_START - 1 || V_CNT == LAST_LINE) && DISP) begin
+			if (H_CNT == BS_FETCH_START - 1 && IS_RENDER_LINES && DISP) begin
 				BACK_FETCH <= 1;
 			end else begin
 				BACK_FETCH <= 0;
 			end
 			
-			if (H_CNT == 9'd2 - 1 && V_CNT < VBL_START) begin
+			if (H_CNT == 9'd2 - 1 && IS_VISIBLE_LINES) begin
 				DOT_FETCH <= 1;
 			end else if (H_CNT == 9'd2 + 9'd352 - 1) begin
 				DOT_FETCH <= 0;
@@ -586,13 +585,13 @@ module VDP2 (
 		else if (DOT_CE_R) begin
 			SCRNX0 <= 0;
 			SCRNX <= SCRNX + 1'd1;
-			if (H_CNT == NBG_SCREEN_START - 1 && (V_CNT < VBL_START || V_CNT == LAST_LINE)) begin
+			if (H_CNT == NBG_SCREEN_START - 1 && (IS_VISIBLE_LINES || IS_LAST_LINE)) begin
 				SCRNX <= '0;
 			end
 			
-			if (H_CNT == LS_FETCH_START - 1 && (V_CNT < VBL_START || V_CNT == LAST_LINE)) begin
+			if (H_CNT == LS_FETCH_START - 1 && (IS_VISIBLE_LINES || IS_LAST_LINE)) begin
 				SCRNY <= SCRNY + 1'd1;
-				if (V_CNT == LAST_LINE) begin
+				if (IS_LAST_LINE) begin
 					SCRNY <= '0;
 				end
 			end
@@ -637,22 +636,22 @@ module VDP2 (
 			          VCPB0 = REGS.CYCB0U[ 3: 0]; VCPB1 = REGS.RAMCTL.VRBMD ? REGS.CYCB1U[ 3: 0] : REGS.CYCB0U[ 3: 0]; end
 		endcase
 			
-		VA_PIPE[0].NxA0PN[0] = VCPA0 == VCP_N0PN                  & NBG_FETCH  & NSxREG[0].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxA1PN[0] = VCPA1 == VCP_N0PN                  & NBG_FETCH  & NSxREG[0].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxB0PN[0] = VCPB0 == VCP_N0PN                  & NBG_FETCH  & NSxREG[0].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxB1PN[0] = VCPB1 == VCP_N0PN                  & NBG_FETCH  & NSxREG[0].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxA0PN[1] = VCPA0 == VCP_N1PN                  & NBG_FETCH  & NSxREG[1].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxA1PN[1] = VCPA1 == VCP_N1PN                  & NBG_FETCH  & NSxREG[1].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxB0PN[1] = VCPB0 == VCP_N1PN                  & NBG_FETCH  & NSxREG[1].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxB1PN[1] = VCPB1 == VCP_N1PN                  & NBG_FETCH  & NSxREG[1].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxA0PN[2] = VCPA0 == VCP_N2PN                  & NBG_FETCH  & NSxREG[2].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxA1PN[2] = VCPA1 == VCP_N2PN                  & NBG_FETCH  & NSxREG[2].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxB0PN[2] = VCPB0 == VCP_N2PN                  & NBG_FETCH  & NSxREG[2].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxB1PN[2] = VCPB1 == VCP_N2PN                  & NBG_FETCH  & NSxREG[2].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxA0PN[3] = VCPA0 == VCP_N3PN                  & NBG_FETCH  & NSxREG[3].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxA1PN[3] = VCPA1 == VCP_N3PN                  & NBG_FETCH  & NSxREG[3].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
-		VA_PIPE[0].NxB0PN[3] = VCPB0 == VCP_N3PN                  & NBG_FETCH  & NSxREG[3].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
-		VA_PIPE[0].NxB1PN[3] = VCPB1 == VCP_N3PN                  & NBG_FETCH  & NSxREG[3].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxA0PN[0] = VCPA0 == VCP_N0PN                  & NPN_FETCH  & NSxREG[0].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxA1PN[0] = VCPA1 == VCP_N0PN                  & NPN_FETCH  & NSxREG[0].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxB0PN[0] = VCPB0 == VCP_N0PN                  & NPN_FETCH  & NSxREG[0].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxB1PN[0] = VCPB1 == VCP_N0PN                  & NPN_FETCH  & NSxREG[0].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxA0PN[1] = VCPA0 == VCP_N1PN                  & NPN_FETCH  & NSxREG[1].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxA1PN[1] = VCPA1 == VCP_N1PN                  & NPN_FETCH  & NSxREG[1].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxB0PN[1] = VCPB0 == VCP_N1PN                  & NPN_FETCH  & NSxREG[1].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxB1PN[1] = VCPB1 == VCP_N1PN                  & NPN_FETCH  & NSxREG[1].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxA0PN[2] = VCPA0 == VCP_N2PN                  & NPN_FETCH  & NSxREG[2].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxA1PN[2] = VCPA1 == VCP_N2PN                  & NPN_FETCH  & NSxREG[2].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxB0PN[2] = VCPB0 == VCP_N2PN                  & NPN_FETCH  & NSxREG[2].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxB1PN[2] = VCPB1 == VCP_N2PN                  & NPN_FETCH  & NSxREG[2].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxA0PN[3] = VCPA0 == VCP_N3PN                  & NPN_FETCH  & NSxREG[3].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxA1PN[3] = VCPA1 == VCP_N3PN                  & NPN_FETCH  & NSxREG[3].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
+		VA_PIPE[0].NxB0PN[3] = VCPB0 == VCP_N3PN                  & NPN_FETCH  & NSxREG[3].ON & (RDBSB0 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
+		VA_PIPE[0].NxB1PN[3] = VCPB1 == VCP_N3PN                  & NPN_FETCH  & NSxREG[3].ON & (RDBSB1 == 2'b00 | !RSxREG[0].ON) & !RSxREG[1].ON;
 		
 		VA_PIPE[0].NxA0CH[0] = VCPA0 == VCP_N0CH                  & NCH_FETCH  & NSxREG[0].ON & (RDBSA0 == 2'b00 | !RSxREG[0].ON)                ;
 		VA_PIPE[0].NxA1CH[0] = VCPA1 == VCP_N0CH                  & NCH_FETCH  & NSxREG[0].ON & (RDBSA1 == 2'b00 | !RSxREG[0].ON)                ;
@@ -718,8 +717,14 @@ module VDP2 (
 		VA_PIPE[0].RxCTTP[0] = RxCTTP[0];
 		VA_PIPE[0].RxCTTP[1] = RxCTTP[1];
 		
-		VA_PIPE[0].AxNA = ((VCPA0 == VCP_NA | VCPA1 == VCP_NA) & REGS.RAMCTL.VRAMD) || NOACCESS;
-		VA_PIPE[0].BxNA = ((VCPB0 == VCP_NA | VCPB1 == VCP_NA) & REGS.RAMCTL.VRBMD) || NOACCESS;
+		VA_PIPE[0].AxNA = ((VCPA0 == VCP_NA | VCPA1 == VCP_NA) & REGS.RAMCTL.VRAMD) || ((VCPA0 == VCP_N0CH | VCPA1 == VCP_N0CH) & NSxREG[0].ON & !NCH_FETCH) || 
+	                                                                                  ((VCPA0 == VCP_N1CH | VCPA1 == VCP_N1CH) & NSxREG[1].ON & !NCH_FETCH) || 
+	                                                                                  ((VCPA0 == VCP_N2CH | VCPA1 == VCP_N2CH) & NSxREG[2].ON & !NCH_FETCH) || 
+	                                                                                  ((VCPA0 == VCP_N3CH | VCPA1 == VCP_N3CH) & NSxREG[3].ON & !NCH_FETCH) || NOACCESS;
+		VA_PIPE[0].BxNA = ((VCPB0 == VCP_NA | VCPB1 == VCP_NA) & REGS.RAMCTL.VRBMD) || ((VCPB0 == VCP_N0CH | VCPB1 == VCP_N0CH) & NSxREG[0].ON & !NCH_FETCH) || 
+	                                                                                  ((VCPB0 == VCP_N1CH | VCPB1 == VCP_N1CH) & NSxREG[1].ON & !NCH_FETCH) || 
+	                                                                                  ((VCPB0 == VCP_N2CH | VCPB1 == VCP_N2CH) & NSxREG[2].ON & !NCH_FETCH) || 
+	                                                                                  ((VCPB0 == VCP_N3CH | VCPB1 == VCP_N3CH) & NSxREG[3].ON & !NCH_FETCH) || NOACCESS;
 		
 		VA_PIPE[0].LS = LS_FETCH;
 		VA_PIPE[0].LS_POS = LS_POS;
@@ -1068,8 +1073,8 @@ module VDP2 (
 					VRAMB1_RD <=  LN_ADDR[18];
 				end else if (REFRESH) begin
 					//
-				end else if (!DISP || VBLANK2 || (!REGS.BGON.N0ON && !REGS.BGON.N1ON && !REGS.BGON.N2ON && !REGS.BGON.N3ON && !REGS.BGON.R0ON && !REGS.BGON.R1ON) ||
-				             !(NBG_FETCH || NCH_FETCH || NVCS_FETCH || RBG_FETCH || RCH_FETCH || CT_FETCH)) begin
+				end else if (!DISP || VB_INT || (!REGS.BGON.N0ON && !REGS.BGON.N1ON && !REGS.BGON.N2ON && !REGS.BGON.N3ON && !REGS.BGON.R0ON && !REGS.BGON.R1ON) ||
+				             !(NPN_FETCH || NCH_FETCH || NVCS_FETCH || RBG_FETCH || RCH_FETCH || CT_FETCH)) begin
 					if (VRAM_WRITE_PEND) begin
 						VRAMA0_A <= {VRAM_WA[17:2],1'b0};
 						VRAMA1_A <= {VRAM_WA[16:2],1'b0};
@@ -1278,9 +1283,9 @@ module VDP2 (
 				end else if (LN_FETCH) begin
 					LN_OFFS <= LN_OFFS + 9'd1;
 					VRAM_BANK <= LN_ADDR[18:17];
-				end else if (!DISP || VBLANK2 || (!REGS.BGON.N0ON && !REGS.BGON.N1ON && !REGS.BGON.N2ON && !REGS.BGON.N3ON && !REGS.BGON.R0ON && !REGS.BGON.R1ON)) begin
+				end else if (!DISP || VB_INT || (!REGS.BGON.N0ON && !REGS.BGON.N1ON && !REGS.BGON.N2ON && !REGS.BGON.N3ON && !REGS.BGON.R0ON && !REGS.BGON.R1ON)) begin
 					
-				end else if (NBG_FETCH || NCH_FETCH || RBG_FETCH || RCH_FETCH || CT_FETCH || NVCS_FETCH) begin
+				end else if (NPN_FETCH || NCH_FETCH || RBG_FETCH || RCH_FETCH || CT_FETCH || NVCS_FETCH) begin
 					NBG_PN_EN <= '{4{0}};
 					NBG_CH_EN <= '{4{0}};
 					RBG_CT_EN <= '{2{0}};
@@ -1396,13 +1401,13 @@ module VDP2 (
 				if ((CELLX | {HRES[1],2'b00}) == 3'd7) begin
 					NBG_PN_CNT <= '{2{'0}};
 				end
-				if (H_CNT == NBG_FETCH_START - 1) begin
+				if (NBG_FETCH_START_EN) begin
 					NBG_PN_CNT <= '{2{'0}};
 					NBG_CH_CNT <= '{4{'0}};
 					NBG_BM_CNT <= '{4{'0}};
-				end	
+				end
 				
-				if (H_CNT == LS_FETCH_START - 2 && V_CNT == LAST_LINE) begin
+				if (H_CNT == LS_FETCH_START - 2 && IS_LAST_LINE) begin
 					LS_POS <= '0;
 					LS_VAL_OFFS <= '{2{'0}};
 //					LS_TBL_OFFS <= '{2{'0}};
@@ -1410,7 +1415,7 @@ module VDP2 (
 					LS_TBL_OFFS[1] <= !NSxREG[1].LSS && DDI && !ODD ? NxLSTblSize(NSxREG[1].LSCX,NSxREG[1].LSCY,NSxREG[1].LZMX,0) : '0;
 				end
 				
-				if (LAST_DOT && V_CNT == NEXT_TO_LAST_LINE) begin
+				if (LAST_DOT && IS_PRELAST_LINE) begin
 					NBG_PN_FETCH <= '{4{0}};
 					LW_POS <= 0;
 					LW_OFFS <= DDI && !ODD ? 9'd1 : 9'd0;
@@ -1614,7 +1619,7 @@ module VDP2 (
 		end
 		else begin
 			if (DOT_CE_R || (DOT_CE_F & HRES[1])) begin
-				if (NBG_FETCH) begin
+				if (NPN_FETCH) begin
 					CX[0] <= CX[0] + LZMX[0];
 					CX[1] <= CX[1] + LZMX[1];
 					CX[2] <= CX[2] + 19'h00100;
@@ -1623,7 +1628,7 @@ module VDP2 (
 			end
 			
 			if (DOT_CE_R) begin
-				if (NBG_FETCH && (CELLX | {HRES[1],2'b00}) == 3'd7) begin
+				if (NPN_FETCH && (CELLX | {HRES[1],2'b00}) == 3'd7) begin
 					NX[0] <= NX[0] + CX[0] + LZMX[0];
 					CX[0] <= '0;
 					NX[1] <= NX[1] + CX[1] + LZMX[1];
@@ -1633,7 +1638,7 @@ module VDP2 (
 					NX[3] <= NX[3] + CX[3] + 19'h00100;
 					CX[3] <= '0;
 				end
-				if (H_CNT == NBG_FETCH_START - 1 || CELLX == 3'h7) begin
+				if (NBG_FETCH_START_EN || CELLX == 3'h7) begin
 					NVCSY[0] <= VS[0] & {19{NSxREG[0].VCSC&~NSxREG[0].MZE}};
 					NVCSY[1] <= VS[1] & {19{NSxREG[1].VCSC&~NSxREG[1].MZE}};
 				end
@@ -1844,7 +1849,7 @@ module VDP2 (
 				if (VA_PIPE[2].RCTB) begin
 					CTD[1] <= CTData(RPxREG[1].KMD, RPxREG[1].KDBS, RP_WD);
 				end
-				
+
 				if (RBG_PIPE[2].RxCT[0] || RBG_PIPE[2].RxCRCT[0]) begin
 					CT_RP = R0RP_PIPE[2];
 					if (RBG_PIPE[2].RxCT[0]) 
@@ -1890,8 +1895,8 @@ module VDP2 (
 							SUBYA <= ScrnIncToRC(RP_DX); SUBYB <= RC_NULL; 								//sub = РћвЂќX - 0
 							MULXA <= MatrParamToRC(RP_A);														//multx = A * sub
 							MULYA <= MatrParamToRC(RP_D);														//multy = D * sub
-							ACCX <= RC_NULL; 																		//accx = 0
-							ACCY <= RC_NULL; 																		//accy = 0
+							ACCX <= '0; 																		//accx = 0
+							ACCY <= '0; 																		//accy = 0
 						end
 						5'd13: begin 																				//sumx = accx + (B * (РћвЂќY - 0)), sumy = 0 + (E * (РћвЂќY - 0))
 							SUBXA <= ScrnIncToRC(RP_DY); SUBXB <= RC_NULL; 								//sub = РћвЂќY - 0
@@ -2083,38 +2088,45 @@ module VDP2 (
 		end
 	end
 	
+	wire [8:0] FBD_HSTART = !HRES[0] ? 9'h18B : 9'h1A8;
 	always @(posedge CLK or negedge RST_N) begin
+		bit  [6:0] HPOS_PIPE;
+		
 		if (!RST_N) begin
+			HPOS_PIPE <= '0;
 			FBDO <= '0;
 		end
 		else begin
 			if (DOT_CE_R) begin
-				if (H_CNT == HTIM_START - 1 + 0)
+				HPOS_PIPE <= {HPOS_PIPE[5:0],1'b0};
+				if (H_CNT == FBD_HSTART - 1 - 1) HPOS_PIPE[0] <= 1;
+				
+				if (HPOS_PIPE[0])
 					FBDO <= RP_Xst[31:16];
-				else if (H_CNT == HTIM_START - 1 + 1)
+				else if (HPOS_PIPE[1])
 					FBDO <= RP_Yst[31:16];
-				else if (H_CNT == HTIM_START - 1 + 2)
+				else if (HPOS_PIPE[2])
 					FBDO <= RP_DXst[31:16];
-				else if (H_CNT == HTIM_START - 1 + 3)
+				else if (HPOS_PIPE[3])
 					FBDO <= RP_DYst[31:16];
-				else if (H_CNT == HTIM_START - 1 + 4)
+				else if (HPOS_PIPE[4])
 					FBDO <= RP_DX[31:16];
-				else if (H_CNT == HTIM_START - 1 + 5)
+				else if (HPOS_PIPE[5])
 					FBDO <= RP_DY[31:16];
 			end
 			
 			if (DOT_CE_F) begin
-				if (H_CNT == HTIM_START + 0)
+				if (HPOS_PIPE[1])
 					FBDO <= RP_Xst[15:0];
-				else if (H_CNT == HTIM_START + 1)
+				else if (HPOS_PIPE[2])
 					FBDO <= RP_Yst[15:0];
-				else if (H_CNT == HTIM_START + 2)
+				else if (HPOS_PIPE[3])
 					FBDO <= RP_DXst[15:0];
-				else if (H_CNT == HTIM_START + 3)
+				else if (HPOS_PIPE[4])
 					FBDO <= RP_DYst[15:0];
-				else if (H_CNT == HTIM_START + 4)
+				else if (HPOS_PIPE[5])
 					FBDO <= RP_DX[15:0];
-				else if (H_CNT == HTIM_START + 5)
+				else if (HPOS_PIPE[6])
 					FBDO <= RP_DY[15:0];
 			end
 		end
@@ -2314,7 +2326,7 @@ module VDP2 (
 							end
 						end else begin
 							PN_CNT[i] = 0;
-							if (DOTCLK_DIV == 2'd1) begin
+							if (DOTCLK_DIV == 2'd1/*(!BG_PIPE[2].NxPNS[i][1] && DOTCLK_DIV == 2'd1) || (BG_PIPE[2].NxPNS[i][1] && DOTCLK_DIV == 2'd3)*/) begin
 								PN_PIPE[0][i] <= !NSxREG[i].PNC.NxPNB ? PN_WD[i] : PNData(NSxREG[i].PNC, NSxREG[i].CHSZ, NSxREG[i].CHCN, PN_WD[i][31:16]);
 							end
 						end
@@ -2347,7 +2359,7 @@ module VDP2 (
 					end
 				end
 				
-				if (H_CNT == NBG_FETCH_START - 1) begin
+				if (NBG_FETCH_START_EN) begin
 					NBG_CDC[0] <= '{8{'0}}; NBG_CDP[0] <= CDP_NULL; NBG_CDP[4] <= CDP_NULL; NBG_CDP[6] <= CDP_NULL;
 					NBG_CDC[1] <= '{8{'0}}; NBG_CDP[1] <= CDP_NULL; NBG_CDP[5] <= CDP_NULL; NBG_CDP[7] <= CDP_NULL;
 					NBG_CDC[2] <= '{8{'0}}; NBG_CDP[2] <= CDP_NULL; 
@@ -3413,7 +3425,7 @@ module VDP2 (
 	bit        COSL;
 	bit        SDEN;
 	bit        BOKEN;
-	bit        HBLANK2;
+	bit        HB_INT2;
 	always @(posedge CLK or negedge RST_N) begin
 		bit [23:0] DC;
 		bit        CC;
@@ -3492,9 +3504,9 @@ module VDP2 (
 			end
 			
 			if (DOT_CE_R) begin
-				HBLANK2 <= HBLANK;
+				HB_INT2 <= HB_INT;
 			end
-			if (HBLANK2 && DOT_CE_F) begin
+			if (HB_INT2 && DOT_CE_F) begin
 				CFST <= DC_NULL;
 				CSEC <= DC_NULL;
 				CTHD <= DC_NULL;
@@ -3514,7 +3526,7 @@ module VDP2 (
 	end
 	
 	DotColor_t DCOL;
-	bit        HBLANK3;
+	bit        HB_INT3;
 	always @(posedge CLK or negedge RST_N) begin
 		DotColor_t CSEC2;
 		DotColor_t C;
@@ -3533,12 +3545,12 @@ module VDP2 (
 			end
 			
 			if (DOT_CE_R) begin
-				HBLANK3 <= HBLANK2;
+				HB_INT3 <= HB_INT2;
 			end
 			
 			if (!DISP) begin
 				DCOL <= REGS.TVMD.BDCLMD ? BACK_DC : DC_NULL;
-			end else if (HBLANK3 && DOT_CE_F) begin
+			end else if (HB_INT3 && DOT_CE_F) begin
 				DCOL <= DC_NULL;
 			end
 		end
@@ -3548,7 +3560,7 @@ module VDP2 (
 	assign G = DCOL.G;
 	assign B = DCOL.B;
 	assign VBL_N = ~VBLANK;
-	assign HBL_N = ~HBLANK3;
+	assign HBL_N = ~HB_INT3;
 	assign VS_N = ~VSYNC;
 	assign HS_N = ~HSYNC;
 	assign FIELD = ~ODD && LSMD[1];
@@ -3649,7 +3661,6 @@ module VDP2 (
 	always @(posedge CLK or negedge RST_N) begin
 		bit         EXLAT_N_OLD;
 		bit [ 3: 0] REG_RD_DELAY;
-		bit         REG_RD_DELAY2,REG_RD_DELAY3;
 		
 		if (!RST_N) begin
 			// synopsys translate_off
@@ -4093,46 +4104,54 @@ module VDP2 (
 					default:;
 				endcase
 			end
-			if (REG_SEL && WE_N && !REG_RD_DELAY && !REG_RRDY && CE_R) begin
-				case ({REG_RA,1'b0})
-					9'h000: REG_DO <= REGS.TVMD & TVMD_MASK;
-					9'h002: REG_DO <= REGS.EXTEN & EXTEN_MASK;
-					9'h004: REG_DO <= {REGS.TVSTAT[15:8], 4'h0, VBLANK|~DISP, HBLANK3, ODD, PAL} & TVSTAT_MASK;
-					9'h006: REG_DO <= REGS.VRSIZE & VRSIZE_MASK;
-					9'h008: REG_DO <= REGS.HCNT & HCNT_MASK;
-					9'h00A: REG_DO <= REGS.VCNT & VCNT_MASK;
-					9'h00E: REG_DO <= REGS.RAMCTL & RAMCTL_MASK;
-					default: REG_DO <= '0;
-				endcase
-				if ({REG_RA,1'b0} == 9'h002 && !REGS.EXTEN.EXLTEN) begin	//EXTEN
-					REGS.HCNT.HCT = {HCT,DOTCLK_DIV[1]};
-					REGS.VCNT.VCT = LSMD == 2'b11 ? {VCT,~ODD} : {1'b0,VCT};
-					REGS.TVSTAT.EXLTFG <= 1;
-				end
-				if ({REG_RA,1'b0} == 9'h004) begin								//TVSTAT
-					REGS.TVSTAT.EXLTFG <= 0;
-					REGS.TVSTAT.EXSYFG <= 0;
-				end
-			end
 				
-			EXLAT_N_OLD <= EXLAT_N;
-			if (!EXLAT_N && EXLAT_N_OLD && REGS.EXTEN.EXLTEN) begin	//EXTEN
-				REGS.HCNT.HCT = {HCT,DOTCLK_DIV[1]};
-				REGS.VCNT.VCT = LSMD == 2'b11 ? {VCT,~ODD} : {1'b0,VCT};
-				REGS.TVSTAT.EXLTFG <= 1;
-			end
-			
 			if (CE_F) begin
 				if (REG_SEL && WE_N && !REQ_N) begin
 					REG_RA <= A[8:1];
 					REG_RRDY <= 0;
-					REG_RD_DELAY <= 4'd8 + (REG_RD_DELAY2 ? 4'd1 : 4'd0) + (REG_RD_DELAY3 && A[8:1] == 8'h01 ? 4'd2 : 4'd0);
-					REG_RD_DELAY2 <= ~REG_RD_DELAY2;
-					REG_RD_DELAY3 <= A[8:1] == 8'h04 || A[8:1] == 8'h05;
 				end
 			end
 			if (CE_R) begin
-				 if (REG_RD_DELAY) begin
+				if (!CS_N && AD_N) begin
+					if (!REG_RD_DELAY) begin
+						REG_RD_DELAY <= 4'd2;
+					end
+				end
+			end
+			
+			if (DOT_CE_F) begin
+				if (REG_SEL && WE_N && REG_RD_DELAY == 4'd0 && !REG_RRDY) begin
+					case ({REG_RA,1'b0})
+						9'h000: REG_DO <= REGS.TVMD & TVMD_MASK;
+						9'h002: REG_DO <= REGS.EXTEN & EXTEN_MASK;
+						9'h004: REG_DO <= {REGS.TVSTAT[15:8], 4'h0, VBLANK|~DISP, HBLANK, ODD, PAL} & TVSTAT_MASK;
+						9'h006: REG_DO <= REGS.VRSIZE & VRSIZE_MASK;
+						9'h008: REG_DO <= REGS.HCNT & HCNT_MASK;
+						9'h00A: REG_DO <= REGS.VCNT & VCNT_MASK;
+						9'h00E: REG_DO <= REGS.RAMCTL & RAMCTL_MASK;
+						default: REG_DO <= '0;
+					endcase
+					if ({REG_RA,1'b0} == 9'h002 && !REGS.EXTEN.EXLTEN) begin	//EXTEN
+						REGS.HCNT.HCT = !REGS.TVMD.HRESO[2] ? {HCT,DOTCLK_DIV[1]&REGS.TVMD.HRESO[1]} : {HCT9,HCT};
+						REGS.VCNT.VCT = REGS.TVMD.LSMD != 2'b11 && !REGS.TVMD.HRESO[2] ? {1'b0,VCT} : REGS.TVMD.LSMD == 2'b11 && ((!ODD && !NNI) || !REGS.TVMD.HRESO[2]) ? {VCT,~ODD&~NNI} : {VCT,VCT0};
+						REGS.TVSTAT.EXLTFG <= 1;
+					end
+					if ({REG_RA,1'b0} == 9'h004) begin								//TVSTAT
+						REGS.TVSTAT.EXLTFG <= 0;
+						REGS.TVSTAT.EXSYFG <= 0;
+					end
+				end
+			end
+			if (DOT_CE_F || DOT_CE_R) begin
+				EXLAT_N_OLD <= EXLAT_N;
+				if (!EXLAT_N && EXLAT_N_OLD && REGS.EXTEN.EXLTEN) begin	//EXTEN
+					REGS.HCNT.HCT = !REGS.TVMD.HRESO[2] ? {HCT,DOTCLK_DIV[1]&REGS.TVMD.HRESO[1]} : {HCT9,HCT};
+					REGS.VCNT.VCT = REGS.TVMD.LSMD != 2'b11 && !REGS.TVMD.HRESO[2] ? {1'b0,VCT} : REGS.TVMD.LSMD == 2'b11 && ((!ODD && !NNI) || !REGS.TVMD.HRESO[2]) ? {VCT,~ODD&~NNI} : {VCT,VCT0};
+					REGS.TVSTAT.EXLTFG <= 1;
+				end
+			end
+			if (DOT_CE_R) begin
+				if (REG_RD_DELAY) begin
 					REG_RD_DELAY <= REG_RD_DELAY - 4'd1;
 				end
 				if (!REG_RD_DELAY && !REG_RRDY) REG_RRDY <= 1;
