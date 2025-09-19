@@ -1465,8 +1465,7 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 		.de_o(vga_de_t)
 	);
 	
-	wire [23:0] pwm_o;
-	`ifdef MISTER_ENABLE_PWM
+	wire [17:0] pwm_r;
 		vga_pwm vga_pwm
 		(
 			.clk(clk_vid),
@@ -1474,11 +1473,12 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 			.hsync(vga_hs),
 			.csync(vga_cs),
 			.din(vga_o),
-			.dout(pwm_o)
+			.dout(pwm_r)
 		);
-	`else
-		assign pwm_o = vga_o;
-	`endif
+		
+	reg [17:0] pwm_o;
+	always @(posedge clk_vid)
+		 pwm_o <= pwm_r;
 	
 
 	`ifndef MISTER_DISABLE_YC
@@ -1491,15 +1491,13 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 
 	wire cs1 = vgas_en ? vgas_cs : vga_cs;
 	wire de1 = vgas_en ? vgas_de : vga_de;
-
-	wire clk_vga = vgas_en ? clk_hdmi : clk_vid;
 	
-	always @(posedge clk_vga) begin
+	always @(posedge clk_vid) begin
 		VGA_VS <= av_dis ? 1'bZ      : ((vgas_en ? (~vgas_vs ^ VS[12])                         : VGA_DISABLE ? 1'd1 : ~vga_vs) | csync_en);
 		VGA_HS <= av_dis ? 1'bZ      :  (vgas_en ? ((csync_en ? ~vgas_cs : ~vgas_hs) ^ HS[12]) : VGA_DISABLE ? 1'd1 : (csync_en ? ~vga_cs : ~vga_hs));
-		VGA_R  <= av_dis ? 6'bZZZZZZ :   vgas_en ? vgas_o[23:18]                               : VGA_DISABLE ? 6'd0 : pwm_o[23:18];
-		VGA_G  <= av_dis ? 6'bZZZZZZ :   vgas_en ? vgas_o[15:10]                               : VGA_DISABLE ? 6'd0 : pwm_o[15:10];
-		VGA_B  <= av_dis ? 6'bZZZZZZ :   vgas_en ? vgas_o[7:2]                                 : VGA_DISABLE ? 6'd0 : pwm_o[7:2]  ;
+		VGA_R  <= av_dis ? 6'bZZZZZZ :   vgas_en ? vgas_o[23:18]                               : VGA_DISABLE ? 6'd0 : pwm_o[17:12];
+		VGA_G  <= av_dis ? 6'bZZZZZZ :   vgas_en ? vgas_o[15:10]                               : VGA_DISABLE ? 6'd0 : pwm_o[11:6];
+		VGA_B  <= av_dis ? 6'bZZZZZZ :   vgas_en ? vgas_o[7:2]                                 : VGA_DISABLE ? 6'd0 : pwm_o[5:0]  ;
 	end
 
 	wire [1:0] vga_r  = vgas_en ? vgas_o[17:16] : VGA_DISABLE ? 2'd0 : vga_o[17:16];

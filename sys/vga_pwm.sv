@@ -1,38 +1,34 @@
 module vga_pwm
 (
-	input         clk,
-	input         csync_en,
-
-	input         hsync,
-	input         csync,
-
-	input  	  [23:0] din,
-	output reg [23:0] dout
+    input		        clk,
+    input		        csync_en,
+	 
+    input		        hsync,
+    input		        csync,
+	 
+    input  		 [23:0] din,
+    output reg  [17:0] dout
 );
 
-reg [1:0]  vga_pwm;
-always @(posedge clk) begin
+    reg [1:0] phase;
+    always @(posedge clk) begin
+        if (csync_en ? ~csync : ~hsync)
+            phase <= phase + 2'd1;
+        else
+            phase <= 2'd0;
+    end
 
-	if (csync_en ? ~csync : ~hsync)
-		vga_pwm <= vga_pwm + 1'd1; 
-	else
-		vga_pwm <= 2'd3;
+    reg  [23:0] din_q;
+    reg  [17:0] dout_q;
 
-	if (vga_pwm < din[17:16] && din[23:18] < 6'b111111)
-		dout[23:18] <= din[23:18] + 1'd1;
-	else 	
-		dout[23:18] <= din[23:18];
+    always @(posedge clk) begin
+        din_q <= din;
 
-	if (vga_pwm < din[9:8] && din[15:10] < 6'b111111)
-		dout[15:10] <= din[15:10] + 1'd1;
-	else 	
-		dout[15:10] <= din[15:10];
+        dout_q[17:12] <= din_q[23:18] + ((phase < din_q[17:16]) & ~&din_q[23:18]);
+        dout_q[11:6] <= din_q[15:10] + ((phase < din_q[9:8])  & ~&din_q[15:10]);
+        dout_q[5:0]   <= din_q[7:2]  + ((phase < din_q[1:0])  & ~&din_q[7:2]);
 
-	if (vga_pwm < din[1:0] && din[7:2] < 6'b111111)
-		dout[7:2] <= din[7:2] + 1'd1;
-	else 	
-		dout[7:2] <= din[7:2];
-
-end
+        dout <= dout_q;
+    end
 
 endmodule
